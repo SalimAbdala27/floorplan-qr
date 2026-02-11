@@ -2,7 +2,7 @@
   "name": "floorplan-qr",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://salimabdala.github.io/floorplan-qr",
+  "homepage": "https://salimabdala27.github.io/floorplan-qr",
   "dependencies": {
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
