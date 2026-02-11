@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/floorplan-qr/static/css/main.eab42825.css",
+    "main.js": "/floorplan-qr/static/js/main.d180c862.js",
+    "static/js/453.f473588b.chunk.js": "/floorplan-qr/static/js/453.f473588b.chunk.js",
+    "index.html": "/floorplan-qr/index.html",
+    "main.eab42825.css.map": "/floorplan-qr/static/css/main.eab42825.css.map",
+    "main.d180c862.js.map": "/floorplan-qr/static/js/main.d180c862.js.map",
+    "453.f473588b.chunk.js.map": "/floorplan-qr/static/js/453.f473588b.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.eab42825.css",
+    "static/js/main.d180c862.js"
+  ]
+}
