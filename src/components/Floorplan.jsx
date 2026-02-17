@@ -6,14 +6,14 @@ export default function FloorPlan({ rooms, breakers, fuseById }) {
   });
 
   return (
-    <div className="rounded-3xl bg-white p-4 shadow-md transition sm:p-6">
+    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition sm:p-6">
       <div className="mb-4 flex items-center justify-between border-b border-zinc-200 pb-2">
         <h3 className="text-sm font-semibold tracking-[0.15em] text-zinc-700">
           FLOORPLAN
         </h3>
         <span
-          className={`text-[10px] font-semibold uppercase tracking-[0.12em] ${
-            anyRoomOff ? "text-red-600" : "text-emerald-600"
+          className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+            anyRoomOff ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"
           }`}
         >
           {anyRoomOff ? "Some Circuits Off" : "All Room Circuits Live"}
@@ -31,20 +31,20 @@ export default function FloorPlan({ rooms, breakers, fuseById }) {
           return (
             <div
               key={room.id}
-              className={`rounded-2xl border px-4 py-3 transition duration-500 ${
+              className={`rounded-xl border px-4 py-3 transition duration-300 ${
                 roomHealthy
                   ? "border-amber-300 bg-amber-100"
                   : "border-red-200 bg-red-50"
               }`}
             >
-              <h4 className="mb-1 text-sm font-semibold text-zinc-800">{room.name}</h4>
+              <h4 className="mb-2 text-sm font-semibold text-zinc-800">{room.name}</h4>
 
-              <p className="text-xs text-zinc-600">
+              <p className="text-xs text-zinc-700">
                 Lights: {lightsFuse ? (lightsOn ? "Powered" : "No power") : "Not assigned"}
                 {lightsFuse ? ` (${lightsFuse.rating} / C${lightsFuse.number})` : ""}
               </p>
 
-              <p className="text-xs text-zinc-600">
+              <p className="mt-0.5 text-xs text-zinc-700">
                 Sockets: {
                   socketsFuse
                     ? socketsOn
