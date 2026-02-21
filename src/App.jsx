@@ -4,131 +4,72 @@ import FuseBox from "./components/Fusebox.jsx";
 import AuthScreen from "./components/AuthScreen.jsx";
 import { supabase } from "./lib/supabaseClient";
 
-const STORAGE_KEY = "floorplan_qr_state_v2";
-
-const initialFuseRatings = [
-  "B6",
-  "B32",
-  "B6",
-  "B16",
-  "B32",
-  "B6",
-  "B32",
-  "B32",
-  "B40",
-  "B16",
-  "B6",
-  "B6",
-  "B6",
-  "B32",
-];
-
-const initialFuses = initialFuseRatings.map((rating, index) => ({
-  id: `fuse${index + 1}`,
-  number: index + 1,
-  rating,
-}));
-
-const initialRooms = [
-  { id: "entrance", name: "Entrance", lightsFuseId: "fuse1", socketsFuseId: "fuse2" },
-  {
-    id: "downstairsBathroom",
-    name: "Downstairs Bathroom",
-    lightsFuseId: "fuse3",
-    socketsFuseId: "fuse4",
-  },
-  { id: "livingRoom", name: "Living Room", lightsFuseId: "fuse5", socketsFuseId: "fuse6" },
-  { id: "kitchen", name: "Kitchen", lightsFuseId: "fuse7", socketsFuseId: "fuse8" },
-  { id: "outsideLights", name: "Outside Lights", lightsFuseId: "fuse9", socketsFuseId: null },
-  {
-    id: "secondFloorLanding",
-    name: "Second Floor Landing",
-    lightsFuseId: "fuse10",
-    socketsFuseId: "fuse2",
-  },
-  {
-    id: "upstairsToilet",
-    name: "Upstairs Toilet",
-    lightsFuseId: "fuse11",
-    socketsFuseId: "fuse4",
-  },
-  {
-    id: "upstairsBathroom",
-    name: "Upstairs Bathroom",
-    lightsFuseId: "fuse12",
-    socketsFuseId: "fuse8",
-  },
-  {
-    id: "alishaBedroom",
-    name: "Alisha Bedroom",
-    lightsFuseId: "fuse13",
-    socketsFuseId: "fuse14",
-  },
-  {
-    id: "mumsBedroom",
-    name: "Mum's Bedroom",
-    lightsFuseId: "fuse13",
-    socketsFuseId: "fuse14",
-  },
-  { id: "office", name: "Office", lightsFuseId: "fuse11", socketsFuseId: "fuse6" },
-  {
-    id: "myBedroom",
-    name: "My Bedroom",
-    lightsFuseId: "fuse12",
-    socketsFuseId: "fuse14",
-  },
-];
+const STORAGE_KEY_PREFIX = "floorplan_qr_state_v2";
+const REMOTE_STATE_TABLE = "user_home_configs";
 
 function createBaseHome(id, name) {
   return {
     id,
     name,
-    fuses: initialFuses,
-    rooms: initialRooms,
-    breakers: Object.fromEntries(initialFuses.map((fuse) => [fuse.id, true])),
-    nextFuseNumber: initialFuses.length + 1,
+    fuses: [],
+    rooms: [],
+    breakers: {},
+    nextFuseNumber: 1,
   };
 }
 
-function loadSavedState() {
+function isValidStateShape(value) {
+  return Boolean(value && Array.isArray(value.homes));
+}
+
+function getStorageKey(userId) {
+  return `${STORAGE_KEY_PREFIX}:${userId}`;
+}
+
+function loadSavedState(userId) {
+  if (!userId) return null;
+
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(getStorageKey(userId));
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed?.homes)) {
+      if (isValidStateShape(parsed)) {
         return parsed;
-      }
-    }
-
-    // Migration from older single-home storage shape
-    const oldRaw = localStorage.getItem("floorplan_qr_state_v1");
-    if (oldRaw) {
-      const oldParsed = JSON.parse(oldRaw);
-      if (
-        Array.isArray(oldParsed?.fuses) &&
-        Array.isArray(oldParsed?.rooms) &&
-        oldParsed?.breakers &&
-        typeof oldParsed.nextFuseNumber === "number"
-      ) {
-        return {
-          homes: [
-            {
-              id: "home1",
-              name: "My Home",
-              fuses: oldParsed.fuses,
-              rooms: oldParsed.rooms,
-              breakers: oldParsed.breakers,
-              nextFuseNumber: oldParsed.nextFuseNumber,
-            },
-          ],
-          activeHomeId: null,
-        };
       }
     }
 
     return null;
   } catch {
     return null;
+  }
+}
+
+async function loadRemoteState(userId) {
+  const { data, error } = await supabase
+    .from(REMOTE_STATE_TABLE)
+    .select("state")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return isValidStateShape(data?.state) ? data.state : null;
+}
+
+async function saveRemoteState(userId, state) {
+  const { error } = await supabase.from(REMOTE_STATE_TABLE).upsert(
+    {
+      user_id: userId,
+      state,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" }
+  );
+
+  if (error) {
+    throw error;
   }
 }
 
@@ -139,6 +80,7 @@ function HomeScreen({
   onSignOut,
   onUpdateHome,
   onDeleteHome,
+  onRenameHome,
 }) {
   const [newFuseRating, setNewFuseRating] = useState("B6");
   const [newRoomName, setNewRoomName] = useState("");
@@ -354,6 +296,13 @@ function HomeScreen({
             </button>
             <button
               type="button"
+              onClick={() => onRenameHome(home.id)}
+              className="h-8 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700 transition hover:bg-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+            >
+              Rename
+            </button>
+            <button
+              type="button"
               onClick={() => onDeleteHome(home.id)}
               className="h-8 rounded-lg bg-red-100 px-3 text-[11px] font-semibold text-red-700 transition hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-200"
             >
@@ -454,7 +403,14 @@ function HomeScreen({
   );
 }
 
-function HomesIndex({ homes, onOpenHome, onCreateHome, onSignOut, userEmail }) {
+function HomesIndex({
+  homes,
+  onOpenHome,
+  onCreateHome,
+  onSignOut,
+  onRenameHome,
+  userEmail,
+}) {
   const [newHomeName, setNewHomeName] = useState("");
 
   const createHome = () => {
@@ -513,17 +469,30 @@ function HomesIndex({ homes, onOpenHome, onCreateHome, onSignOut, userEmail }) {
 
         <div className="space-y-2">
           {homes.map((home) => (
-            <button
+            <div
               key={home.id}
-              type="button"
-              onClick={() => onOpenHome(home.id)}
-              className="w-full rounded-2xl border border-zinc-200 bg-white p-3 text-left shadow-sm transition hover:border-zinc-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-zinc-300"
+              className="w-full rounded-2xl border border-zinc-200 bg-white p-3 text-left shadow-sm transition hover:border-zinc-300 hover:shadow-md"
             >
-              <p className="text-sm font-semibold text-zinc-800">{home.name}</p>
-              <p className="text-xs text-zinc-500">
-                {home.rooms.length} rooms · {home.fuses.length} fuses
-              </p>
-            </button>
+              <div className="flex items-start justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => onOpenHome(home.id)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <p className="truncate text-sm font-semibold text-zinc-800">{home.name}</p>
+                  <p className="text-xs text-zinc-500">
+                    {home.rooms.length} rooms · {home.fuses.length} fuses
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRenameHome(home.id)}
+                  className="h-7 rounded-lg bg-zinc-200 px-2.5 text-[11px] font-semibold text-zinc-700 transition hover:bg-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+                >
+                  Rename
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -534,32 +503,28 @@ function HomesIndex({ homes, onOpenHome, onCreateHome, onSignOut, userEmail }) {
 export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  const savedState = loadSavedState();
-
-  const [homes, setHomes] = useState(
-    savedState?.homes?.length ? savedState.homes : [createBaseHome("home1", "My Home")]
-  );
-  const [activeHomeId, setActiveHomeId] = useState(savedState?.activeHomeId ?? null);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [isCloudHydrated, setIsCloudHydrated] = useState(false);
+  const [homes, setHomes] = useState([]);
+  const [activeHomeId, setActiveHomeId] = useState(null);
+  const [renameHomeId, setRenameHomeId] = useState(null);
+  const [renameHomeName, setRenameHomeName] = useState("");
+  const userId = session?.user?.id || null;
+  const currentState = useMemo(() => ({ homes, activeHomeId }), [homes, activeHomeId]);
 
   useEffect(() => {
+    if (!userId) return;
+
     localStorage.setItem(
-      STORAGE_KEY,
+      getStorageKey(userId),
       JSON.stringify({
         homes,
         activeHomeId,
       })
     );
-  }, [homes, activeHomeId]);
+  }, [userId, homes, activeHomeId]);
 
   useEffect(() => {
-    if (!homes.length) {
-      const fallback = createBaseHome(`home${Date.now()}`, "My Home");
-      setHomes([fallback]);
-      setActiveHomeId(fallback.id);
-      return;
-    }
-
     if (activeHomeId && !homes.some((home) => home.id === activeHomeId)) {
       setActiveHomeId(null);
     }
@@ -588,6 +553,74 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncFromCloud = async () => {
+      if (!userId) {
+        setHomes([]);
+        setActiveHomeId(null);
+        setCloudLoading(false);
+        setIsCloudHydrated(false);
+        return;
+      }
+
+      setCloudLoading(true);
+      setIsCloudHydrated(false);
+
+      try {
+        const localState = loadSavedState(userId);
+        setHomes(localState?.homes ?? []);
+        setActiveHomeId(null);
+
+        const remoteState = await loadRemoteState(userId);
+
+        if (cancelled) return;
+
+        if (remoteState && isValidStateShape(remoteState)) {
+          setHomes(remoteState.homes ?? []);
+          setActiveHomeId(null);
+        } else if (!localState) {
+          // New account with no remote/local data starts as blank canvas.
+          setHomes([]);
+          setActiveHomeId(null);
+        }
+      } catch (error) {
+        // If the table/policies are not set yet, keep local state and log the issue.
+        console.error("Supabase sync load failed:", error.message || error);
+      } finally {
+        if (!cancelled) {
+          setCloudLoading(false);
+          setIsCloudHydrated(true);
+        }
+      }
+    };
+
+    syncFromCloud();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  // Always start on Homes page after auth/session is established.
+  useEffect(() => {
+    if (!userId) return;
+    setActiveHomeId(null);
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId || !isCloudHydrated) return;
+
+    const timeoutId = setTimeout(() => {
+      saveRemoteState(userId, currentState).catch((error) => {
+        console.error("Supabase sync save failed:", error.message || error);
+      });
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [userId, isCloudHydrated, currentState]);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
   };
@@ -606,10 +639,42 @@ export default function App() {
     setActiveHomeId(null);
   };
 
-  if (loading) {
+  const openRenameHome = (homeId) => {
+    const target = homes.find((home) => home.id === homeId);
+    if (!target) return;
+    setRenameHomeId(homeId);
+    setRenameHomeName(target.name);
+  };
+
+  const closeRenameHome = () => {
+    setRenameHomeId(null);
+    setRenameHomeName("");
+  };
+
+  const saveRenameHome = () => {
+    if (!renameHomeId) return;
+    const cleaned = renameHomeName.trim();
+    if (!cleaned) return;
+
+    setHomes((prev) =>
+      prev.map((home) =>
+        home.id === renameHomeId
+          ? {
+              ...home,
+              name: cleaned,
+            }
+          : home
+      )
+    );
+    closeRenameHome();
+  };
+
+  if (loading || (session && cloudLoading)) {
     return (
       <div className="min-h-screen bg-neutral-100 flex items-center justify-center">
-        <p className="text-sm text-zinc-600">Loading...</p>
+        <p className="text-sm text-zinc-600">
+          {loading ? "Loading..." : "Syncing your home data..."}
+        </p>
       </div>
     );
   }
@@ -620,19 +685,16 @@ export default function App() {
 
   const activeHome = homes.find((home) => home.id === activeHomeId) || null;
 
-  if (!activeHome) {
-    return (
-      <HomesIndex
-        homes={homes}
-        onOpenHome={setActiveHomeId}
-        onCreateHome={createHome}
-        onSignOut={handleSignOut}
-        userEmail={session.user?.email}
-      />
-    );
-  }
-
-  return (
+  const content = !activeHome ? (
+    <HomesIndex
+      homes={homes}
+      onOpenHome={setActiveHomeId}
+      onCreateHome={createHome}
+      onSignOut={handleSignOut}
+      onRenameHome={openRenameHome}
+      userEmail={session.user?.email}
+    />
+  ) : (
     <HomeScreen
       home={activeHome}
       onBack={() => setActiveHomeId(null)}
@@ -640,6 +702,45 @@ export default function App() {
       onSignOut={handleSignOut}
       onUpdateHome={(mutator) => updateHome(activeHome.id, mutator)}
       onDeleteHome={deleteHome}
+      onRenameHome={openRenameHome}
     />
+  );
+
+  return (
+    <>
+      {content}
+      {renameHomeId ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/35 p-3">
+          <div className="mx-auto w-full max-w-[23rem] rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600">
+              Rename Home
+            </p>
+            <input
+              value={renameHomeName}
+              onChange={(event) => setRenameHomeName(event.target.value)}
+              className="mt-2 h-11 w-full rounded-lg border border-zinc-300 px-3 text-sm text-zinc-800 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+              placeholder="Home name"
+              autoFocus
+            />
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeRenameHome}
+                className="h-9 rounded-lg bg-zinc-200 px-3 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveRenameHome}
+                className="h-9 rounded-lg bg-zinc-800 px-3 text-xs font-semibold text-white transition hover:bg-zinc-700"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
