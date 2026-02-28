@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import FloorPlan from "./components/Floorplan.jsx";
 import FuseBox from "./components/Fusebox.jsx";
 import AuthScreen from "./components/AuthScreen.jsx";
@@ -256,6 +258,67 @@ function HomeScreen({
     }));
   };
 
+  const exportFuseboxPdf = () => {
+    const doc = new jsPDF();
+    const generatedAt = new Date().toLocaleString();
+    const safeHomeName = (home.name || "Home").replace(/[^\w\s-]/g, "").trim() || "home";
+
+    doc.setFontSize(18);
+    doc.text(`${home.name} - Fusebox Report`, 14, 18);
+    doc.setFontSize(10);
+    doc.text(`Generated ${generatedAt}`, 14, 24);
+
+    doc.setFontSize(11);
+    doc.text("Main Switch: 100A Main Isolator (ON)", 14, 32);
+
+    const fuseBody = home.fuses.map((fuse) => {
+      const linked = home.rooms
+        .flatMap((room) => {
+          const circuits = [];
+          if (room.lightsFuseId === fuse.id) circuits.push(`${room.name} (Lights)`);
+          if (room.socketsFuseId === fuse.id) circuits.push(`${room.name} (Sockets)`);
+          return circuits;
+        })
+        .join(", ");
+
+      return [`C${fuse.number}`, fuse.rating, home.breakers[fuse.id] ? "ON" : "OFF", linked || "Spare"];
+    });
+
+    autoTable(doc, {
+      startY: 38,
+      head: [["Circuit", "Rating", "Status", "Linked Circuits"]],
+      body: fuseBody.length ? fuseBody : [["-", "-", "-", "No fuses added"]],
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [31, 41, 55] },
+    });
+
+    const roomBody = home.rooms.map((room) => {
+      const lightsFuse = room.lightsFuseId
+        ? home.fuses.find((fuse) => fuse.id === room.lightsFuseId)
+        : null;
+      const socketsFuse = room.socketsFuseId
+        ? home.fuses.find((fuse) => fuse.id === room.socketsFuseId)
+        : null;
+
+      return [
+        room.name,
+        lightsFuse ? `C${lightsFuse.number} (${lightsFuse.rating})` : "Unassigned",
+        socketsFuse ? `C${socketsFuse.number} (${socketsFuse.rating})` : "Unassigned",
+      ];
+    });
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [["Room", "Lights Fuse", "Sockets Fuse"]],
+      body: roomBody.length ? roomBody : [["-", "No rooms added", "No rooms added"]],
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [31, 41, 55] },
+    });
+
+    const fileName = `${safeHomeName.toLowerCase().replace(/\s+/g, "_")}_fusebox_report.pdf`;
+    doc.save(fileName);
+  };
+
   return (
     <div className="min-h-screen bg-neutral-100 flex flex-col">
       <div className="px-4 pt-3">
@@ -307,6 +370,13 @@ function HomeScreen({
               className="h-8 rounded-lg bg-red-100 px-3 text-[11px] font-semibold text-red-700 transition hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-200"
             >
               Delete Home
+            </button>
+            <button
+              type="button"
+              onClick={exportFuseboxPdf}
+              className="h-8 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+            >
+              Export PDF
             </button>
           </div>
         </div>

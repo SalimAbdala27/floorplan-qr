@@ -33,6 +33,25 @@ export default function FuseBox({
             </h2>
           </div>
 
+          <div className="mb-2 rounded-lg border border-zinc-300 bg-zinc-100 p-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+              Main Switch
+            </p>
+            <div className="mt-2 flex items-center justify-between rounded-lg border border-zinc-300 bg-zinc-200 p-2 shadow-inner">
+              <div>
+                <p className="text-xs font-semibold text-zinc-700">Main Isolator</p>
+                <p className="text-[10px] text-zinc-500">Always present in every fusebox</p>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <span className="rounded bg-zinc-700 px-2 py-0.5 text-[9px] font-semibold text-zinc-100">
+                  100A
+                </span>
+                <span className="h-8 w-8 rounded bg-red-600 shadow-[inset_0_-2px_0_rgba(0,0,0,0.2)]" />
+                <span className="text-[9px] font-semibold text-emerald-700">ON</span>
+              </div>
+            </div>
+          </div>
+
           <div className="mb-2 grid grid-cols-4 gap-2 border-b border-zinc-300 pb-2">
             {fuses.map((fuse) => {
               const isOn = breakers[fuse.id];
