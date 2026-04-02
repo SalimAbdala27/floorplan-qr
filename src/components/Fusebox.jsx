@@ -3,8 +3,10 @@ import { useState } from "react";
 export default function FuseBox({
   fuses,
   rooms,
+  floorNameById = {},
   breakers,
   toggleBreaker,
+  updateFuseDetails,
   circuitsByFuse,
   affectedCircuits = [],
   affectedRooms = [],
@@ -19,7 +21,7 @@ export default function FuseBox({
 
   return (
     <div className="mt-4 px-3 pb-4">
-      <div className="mx-auto w-full max-w-[23rem] rounded-2xl border border-zinc-500 bg-gradient-to-b from-zinc-100 via-zinc-200 to-zinc-300 p-3 shadow-[0_16px_35px_rgba(0,0,0,0.22)]">
+      <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl rounded-2xl border border-zinc-500 bg-gradient-to-b from-zinc-100 via-zinc-200 to-zinc-300 p-3 shadow-[0_16px_35px_rgba(0,0,0,0.22)]">
         <div className="relative rounded-xl border border-zinc-400 bg-zinc-50 p-3 shadow-inner">
           <span className="absolute left-2 top-2 h-2.5 w-2.5 rounded-full border border-zinc-500 bg-zinc-300" />
           <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border border-zinc-500 bg-zinc-300" />
@@ -56,6 +58,12 @@ export default function FuseBox({
             {fuses.map((fuse) => {
               const isOn = breakers[fuse.id];
               const linkedCircuits = circuitsByFuse[fuse.id] || [];
+              const linkedRoom = fuse.linkedRoomId
+                ? rooms.find((room) => room.id === fuse.linkedRoomId)
+                : "";
+              const linkedRoomDisplay = linkedRoom
+                ? `${linkedRoom.name} (${floorNameById[linkedRoom.floorId] || "Floor"})`
+                : "";
               const circuitsSummary =
                 linkedCircuits.length > 2
                   ? `${linkedCircuits.slice(0, 2).join(", ")} +${linkedCircuits.length - 2} more`
@@ -85,6 +93,8 @@ export default function FuseBox({
                     title={linkedCircuits.length ? linkedCircuits.join(", ") : "Spare"}
                     className="mt-1 min-h-[28px] text-[9px] leading-tight text-zinc-500 break-words"
                   >
+                    {fuse.label ? `${fuse.label} · ` : ""}
+                    {linkedRoomDisplay ? `${linkedRoomDisplay} · ` : ""}
                     {linkedCircuits.length ? circuitsSummary : "Spare"}
                   </p>
                 </div>
@@ -131,7 +141,7 @@ export default function FuseBox({
               className="flex w-full items-center justify-between text-left"
             >
               <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
-                Room Circuit Mapping
+                Fuse Configuration
               </p>
               <span className="text-xs font-semibold text-zinc-500">
                 {showRoomMapping ? "Hide" : "Show"}
@@ -140,46 +150,95 @@ export default function FuseBox({
 
             {showRoomMapping ? (
               <div className="mt-2 space-y-2">
-                {rooms.map((room) => (
-                  <div key={room.id} className="rounded-lg border border-zinc-200 bg-white p-2.5">
-                    <p className="text-sm font-semibold text-zinc-700">{room.name}</p>
+                {fuses.map((fuse) => (
+                  <div key={fuse.id} className="rounded-lg border border-zinc-200 bg-white p-2.5">
+                    <p className="text-sm font-semibold text-zinc-700">Circuit {fuse.number}</p>
 
-                    <div className="mt-1 grid grid-cols-2 gap-2">
+                    <div className="mt-1 grid grid-cols-1 gap-2">
                       <label className="text-[10px] text-zinc-500">
-                        Lights
-                        <select
-                          value={room.lightsFuseId || ""}
+                        Fuse Type
+                        <input
+                          value={fuse.rating}
                           onChange={(event) =>
-                            updateRoomFuse(room.id, "lights", event.target.value)
+                            updateFuseDetails(fuse.id, { rating: event.target.value.toUpperCase() })
+                          }
+                          className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                        />
+                      </label>
+
+                      <label className="text-[10px] text-zinc-500">
+                        Label
+                        <input
+                          value={fuse.label || ""}
+                          onChange={(event) => updateFuseDetails(fuse.id, { label: event.target.value })}
+                          placeholder="e.g. Upstairs lights"
+                          className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                        />
+                      </label>
+
+                      <label className="text-[10px] text-zinc-500">
+                        Link to Room (optional)
+                        <select
+                          value={fuse.linkedRoomId || ""}
+                          onChange={(event) =>
+                            updateFuseDetails(fuse.id, { linkedRoomId: event.target.value || null })
                           }
                           className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                         >
-                          <option value="">Unassigned</option>
-                          {fuses.map((fuse) => (
-                            <option key={`${room.id}-lights-${fuse.id}`} value={fuse.id}>
-                              C{fuse.number} ({fuse.rating})
+                          <option value="">No room linked</option>
+                          {rooms.map((room) => (
+                            <option key={`${fuse.id}-room-${room.id}`} value={room.id}>
+                              {room.name} ({floorNameById[room.floorId] || "Floor"})
                             </option>
                           ))}
                         </select>
                       </label>
 
-                      <label className="text-[10px] text-zinc-500">
-                        Sockets
-                        <select
-                          value={room.socketsFuseId || ""}
-                          onChange={(event) =>
-                            updateRoomFuse(room.id, "sockets", event.target.value)
-                          }
-                          className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                        >
-                          <option value="">Unassigned</option>
-                          {fuses.map((fuse) => (
-                            <option key={`${room.id}-sockets-${fuse.id}`} value={fuse.id}>
-                              C{fuse.number} ({fuse.rating})
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="text-[10px] text-zinc-500">
+                          Lights Mapping
+                          <select
+                            value={
+                              rooms.find((room) => room.lightsFuseId === fuse.id)?.id || ""
+                            }
+                            onChange={(event) => {
+                              const roomId = event.target.value;
+                              if (!roomId) return;
+                              updateRoomFuse(roomId, "lights", fuse.id);
+                            }}
+                            className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                          >
+                            <option value="">No room</option>
+                            {rooms.map((room) => (
+                              <option key={`${fuse.id}-lights-${room.id}`} value={room.id}>
+                                {room.name} ({floorNameById[room.floorId] || "Floor"})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="text-[10px] text-zinc-500">
+                          Sockets Mapping
+                          <select
+                            value={
+                              rooms.find((room) => room.socketsFuseId === fuse.id)?.id || ""
+                            }
+                            onChange={(event) => {
+                              const roomId = event.target.value;
+                              if (!roomId) return;
+                              updateRoomFuse(roomId, "sockets", fuse.id);
+                            }}
+                            className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                          >
+                            <option value="">No room</option>
+                            {rooms.map((room) => (
+                              <option key={`${fuse.id}-sockets-${room.id}`} value={room.id}>
+                                {room.name} ({floorNameById[room.floorId] || "Floor"})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
                     </div>
                   </div>
                 ))}

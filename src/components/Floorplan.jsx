@@ -1,4 +1,4 @@
-export default function FloorPlan({ rooms, breakers, fuseById }) {
+export default function FloorPlan({ rooms, breakers, fuseById, floorNameById = {} }) {
   const anyRoomOff = rooms.some((room) => {
     const lightsOn = room.lightsFuseId ? breakers[room.lightsFuseId] : false;
     const socketsOn = room.socketsFuseId ? breakers[room.socketsFuseId] : true;
@@ -38,6 +38,9 @@ export default function FloorPlan({ rooms, breakers, fuseById }) {
               }`}
             >
               <h4 className="mb-2 text-sm font-semibold text-zinc-800">{room.name}</h4>
+              <p className="mb-1 text-[11px] text-zinc-500">
+                {floorNameById[room.floorId] || "Unassigned Floor"}
+              </p>
 
               <p className="text-xs text-zinc-700">
                 Lights: {lightsFuse ? (lightsOn ? "Powered" : "No power") : "Not assigned"}
