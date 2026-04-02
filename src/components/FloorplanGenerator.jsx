@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const CANVAS_WIDTH = 760;
-const CANVAS_HEIGHT = 520;
+const CANVAS_WIDTH = 420;
+const CANVAS_HEIGHT = 640;
 const ITEM_SAFE_MARGIN = 8;
 const SNAP_DISTANCE = 10;
 const PIXELS_PER_METER = 40;
@@ -487,9 +487,7 @@ export default function FloorplanGenerator({
   };
 
   const startMoveDrag = (event, type, item) => {
-    if (event.pointerType !== "touch") {
-      event.preventDefault();
-    }
+    event.preventDefault();
     event.stopPropagation();
 
     const point = getCanvasPoint(event);
@@ -508,9 +506,7 @@ export default function FloorplanGenerator({
   };
 
   const startResizeDrag = (event, type, item) => {
-    if (event.pointerType !== "touch") {
-      event.preventDefault();
-    }
+    event.preventDefault();
     event.stopPropagation();
 
     const point = getCanvasPoint(event);
@@ -842,10 +838,16 @@ export default function FloorplanGenerator({
 
         <div
           ref={viewportRef}
-          className="mt-2 h-[430px] md:h-[560px] overflow-hidden rounded-lg border border-zinc-300 bg-white"
+          className="mt-2 h-[520px] md:h-[640px] overflow-hidden rounded-lg border border-zinc-300 bg-white"
         >
-          <div className="h-full w-full">
-            <div style={{ width: CANVAS_WIDTH * effectiveZoom, height: CANVAS_HEIGHT * effectiveZoom, margin: "0 auto" }}>
+          <div className="h-full w-full bg-zinc-50">
+            <div
+              style={{
+                width: CANVAS_WIDTH * effectiveZoom,
+                height: CANVAS_HEIGHT * effectiveZoom,
+                margin: "0 auto",
+              }}
+            >
             <div
               ref={canvasRef}
               onPointerMove={onCanvasPointerMove}
@@ -855,7 +857,7 @@ export default function FloorplanGenerator({
               onTouchStart={onCanvasTouchStart}
               onTouchMove={onCanvasTouchMove}
               onTouchEnd={onCanvasTouchEnd}
-              className="relative origin-top-left bg-zinc-50 touch-pan-y"
+              className="relative origin-top-left bg-zinc-50 touch-none"
               style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${effectiveZoom})` }}
             >
               {(activeFloor.rooms || []).map(renderRoom)}

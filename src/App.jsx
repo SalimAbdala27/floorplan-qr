@@ -4,6 +4,7 @@ import autoTable from "jspdf-autotable";
 import FloorPlan from "./components/Floorplan.jsx";
 import FuseBox from "./components/Fusebox.jsx";
 import FloorplanCanvas from "./components/FloorplanCanvas.jsx";
+import InventoryFlow from "./components/InventoryFlow.jsx";
 import AuthScreen from "./components/AuthScreen.jsx";
 import { supabase } from "./lib/supabaseClient";
 import {
@@ -355,7 +356,7 @@ function createBaseHome(id, name, presetKey) {
     gasChecks: buildBooleanMapFromRooms(rooms, false),
     fireAlarmChecks: buildBooleanMapFromRooms(rooms, false),
     floorplanLayout: applyLayoutRules(buildLayoutFromRooms(rooms)),
-    inventory: [],
+    inventoryReport: null,
   };
 }
 
@@ -397,9 +398,6 @@ function HomeScreen({
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomFloorId, setNewRoomFloorId] = useState("floor_1");
   const [selectedRoomId, setSelectedRoomId] = useState(null);
-  const [inventoryName, setInventoryName] = useState("");
-  const [inventoryQty, setInventoryQty] = useState("1");
-  const [inventoryNotes, setInventoryNotes] = useState("");
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [floorplanStep, setFloorplanStep] = useState("preset");
   const [reportSections, setReportSections] = useState({
@@ -422,9 +420,6 @@ function HomeScreen({
     setNewRoomName("");
     setNewRoomFloorId("floor_1");
     setSelectedRoomId(null);
-    setInventoryName("");
-    setInventoryQty("1");
-    setInventoryNotes("");
     setFloorplanStep("preset");
     setExportModalOpen(false);
   }, [home.id, home.presetKey]);
@@ -555,7 +550,12 @@ function HomeScreen({
       gasChecks: normalizeRoomMap(nextHome.gasChecks),
       fireAlarmChecks: normalizeRoomMap(nextHome.fireAlarmChecks),
       floorplanLayout: normalizedLayout,
-      inventory: Array.isArray(nextHome.inventory) ? nextHome.inventory : [],
+      inventoryReport:
+        nextHome.inventoryReport &&
+        Array.isArray(nextHome.inventoryReport.rooms) &&
+        typeof nextHome.inventoryReport.createdAt === "string"
+          ? nextHome.inventoryReport
+          : null,
     };
   };
 
@@ -868,37 +868,6 @@ function HomeScreen({
         ...prev.fireAlarmChecks,
         [roomId]: !prev.fireAlarmChecks?.[roomId],
       },
-    }));
-  };
-
-  const addInventoryItem = () => {
-    const cleanName = inventoryName.trim();
-    if (!cleanName) return;
-    const qty = Math.max(1, Number.parseInt(inventoryQty, 10) || 1);
-
-    updateHome((prev) => ({
-      ...prev,
-      inventory: [
-        ...(prev.inventory || []),
-        {
-          id: `inv_${Date.now()}`,
-          name: cleanName,
-          quantity: qty,
-          notes: inventoryNotes.trim(),
-          roomId: selectedRoomId || null,
-        },
-      ],
-    }));
-
-    setInventoryName("");
-    setInventoryQty("1");
-    setInventoryNotes("");
-  };
-
-  const removeInventoryItem = (itemId) => {
-    updateHome((prev) => ({
-      ...prev,
-      inventory: (prev.inventory || []).filter((item) => item.id !== itemId),
     }));
   };
 
@@ -1267,14 +1236,30 @@ function HomeScreen({
 
     if (reportSections.inventory) {
       addSectionHeading("Inventory");
-      const inventoryBody = (home.inventory || []).map((item) => [
-        item.name || "Item",
-        String(item.quantity || 1),
-        item.notes || "",
-      ]);
+      const inventoryRooms = home.inventoryReport?.rooms || [];
+      const inventoryBody = inventoryRooms.flatMap((roomInventory) => {
+        const roomName =
+          home.rooms.find((room) => room.id === roomInventory.roomId)?.name || roomInventory.roomId;
+        const mediaCount = roomInventory.media?.length || 0;
+        const panoCount =
+          roomInventory.media?.filter((media) => media.type === "pano").length || 0;
+
+        if (!roomInventory.items?.length) {
+          return [[roomName, "-", "-", `Media: ${mediaCount} (${panoCount} pano)`]];
+        }
+
+        return roomInventory.items.map((item, index) => [
+          index === 0 ? roomName : "",
+          item.name || "-",
+          item.condition || "-",
+          `${item.notes || ""}${
+            index === 0 ? ` ${item.notes ? "· " : ""}Media: ${mediaCount} (${panoCount} pano)` : ""
+          }`,
+        ]);
+      });
       addTable(
-        ["Item", "Quantity", "Notes"],
-        inventoryBody.length ? inventoryBody : [["No items", "-", "-"]]
+        ["Room", "Element", "Condition", "Notes / Media"],
+        inventoryBody.length ? inventoryBody : [["No inventory report", "-", "-", "-"]]
       );
     }
 
@@ -1776,71 +1761,19 @@ function HomeScreen({
 
       {activeFlow === "inventory" ? (
         <div className="flex-1 p-4">
-          <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
-              Inventory Flow
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">
-              Track items for property checks and handovers.
-            </p>
-
-            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-              <input
-                value={inventoryName}
-                onChange={(event) => setInventoryName(event.target.value)}
-                placeholder="Item name"
-                className="h-10 rounded-lg border border-zinc-300 px-3 text-sm text-zinc-700"
-              />
-              <input
-                type="number"
-                min={1}
-                value={inventoryQty}
-                onChange={(event) => setInventoryQty(event.target.value)}
-                placeholder="Qty"
-                className="h-10 rounded-lg border border-zinc-300 px-3 text-sm text-zinc-700"
-              />
-              <input
-                value={inventoryNotes}
-                onChange={(event) => setInventoryNotes(event.target.value)}
-                placeholder="Notes (optional)"
-                className="h-10 rounded-lg border border-zinc-300 px-3 text-sm text-zinc-700 md:col-span-2"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={addInventoryItem}
-              className="mt-2 h-10 w-full rounded-lg bg-zinc-800 px-3 text-xs font-semibold text-zinc-100"
-            >
-              Add Inventory Item
-            </button>
-
-            <div className="mt-3 space-y-2">
-              {(home.inventory || []).map((item) => (
-                <div key={item.id} className="rounded-lg border border-zinc-200 bg-zinc-50 p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-zinc-700">
-                        {item.name} x{item.quantity}
-                      </p>
-                      <p className="truncate text-xs text-zinc-500">
-                        {item.notes || "No notes"}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeInventoryItem(item.id)}
-                      className="h-7 rounded-lg bg-red-100 px-2 text-[10px] font-semibold text-red-700"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {!(home.inventory || []).length ? (
-                <p className="text-xs text-zinc-500">No inventory items yet.</p>
-              ) : null}
-            </div>
+          <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl">
+            <InventoryFlow
+              propertyId={home.id}
+              propertyName={home.name}
+              rooms={home.rooms}
+              initialReport={home.inventoryReport}
+              onReportChange={(report) =>
+                updateHome((prev) => ({
+                  ...prev,
+                  inventoryReport: report,
+                }))
+              }
+            />
           </div>
         </div>
       ) : null}
