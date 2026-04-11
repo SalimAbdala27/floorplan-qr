@@ -45,13 +45,13 @@ export default function AuthScreen() {
       <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-5 shadow-md">
         <img
           src={`${process.env.PUBLIC_URL}/digifusebox-logo.png`}
-          alt="DigiFuseBox logo"
-          className="mx-auto mb-3 h-auto w-full max-w-[180px]"
+          alt="EasyProp logo"
+          className="mx-auto mb-4 h-auto w-full max-w-[220px]"
         />
         <h1 className="text-xl font-semibold text-zinc-800">
           {isSignUp ? "Create Account" : "Sign In"}
         </h1>
-        <p className="mt-1 text-sm text-zinc-500">Floorplan Fuse Manager</p>
+        <p className="mt-1 text-sm text-zinc-500">Estate agent inspections, floorplans, and reports.</p>
 
         <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
           <label className="block text-xs font-medium text-zinc-600">

@@ -1854,23 +1854,32 @@ function HomeScreen({
     <div className="min-h-screen bg-neutral-100 flex flex-col">
       <div className="px-4 pt-3">
         <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 shadow-sm">
-          <div className="flex items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex min-w-0 items-center gap-2"
+            >
               <img
                 src={`${process.env.PUBLIC_URL}/digifusebox-logo.png`}
-                alt="DigiFuseBox logo"
-                className="h-9 w-auto"
+                alt="EasyProp logo"
+                className="h-8 w-auto"
               />
-              <div className="min-w-0">
-                <p className="truncate text-xs font-semibold text-zinc-700">{home.name}</p>
-                <p className="truncate text-[10px] text-zinc-500">{userEmail || "Unknown"}</p>
+              <div className="rounded-full bg-zinc-100 px-2.5 py-1">
+                <p className="max-w-[140px] truncate text-[11px] font-semibold text-zinc-700">{home.name}</p>
               </div>
-            </div>
+            </button>
+          </div>
 
+          <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Account</p>
+              <p className="truncate text-[11px] font-medium text-zinc-700">{userEmail || "Unknown"}</p>
+            </div>
             <button
               type="button"
               onClick={onSignOut}
-              className="h-8 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-400"
+              className="h-8 shrink-0 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-400"
             >
               Sign out
             </button>
@@ -2542,22 +2551,24 @@ function HomesIndex({
     <div className="min-h-screen bg-neutral-100 p-4">
       <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl space-y-3">
         <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-center">
             <div className="flex items-center gap-2 min-w-0">
               <img
                 src={`${process.env.PUBLIC_URL}/digifusebox-logo.png`}
-                alt="DigiFuseBox logo"
-                className="h-10 w-auto"
+                alt="EasyProp logo"
+                className="h-8 w-auto"
               />
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-zinc-700">Homes</p>
-                <p className="truncate text-[10px] text-zinc-500">{userEmail || "Unknown"}</p>
-              </div>
+            </div>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Account</p>
+              <p className="truncate text-[11px] font-medium text-zinc-700">{userEmail || "Unknown"}</p>
             </div>
             <button
               type="button"
               onClick={onSignOut}
-              className="h-8 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-400"
+              className="h-8 shrink-0 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-400"
             >
               Sign out
             </button>
@@ -2808,7 +2819,7 @@ export default function App() {
   );
 
   return (
-    <>
+    <div>
       {content}
       {renameHomeId ? (
         <div className="fixed inset-0 z-50 flex items-end bg-black/35 p-3">
@@ -2842,6 +2853,6 @@ export default function App() {
           </div>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }
