@@ -22,10 +22,13 @@ export default function InventoryFlow({
   initialReport,
   onReportChange,
   defaultBranding,
+  onAddRoom,
 }) {
   const currentReport = useInventoryStore((s) => s.currentReport);
   const activeRoomId = useInventoryStore((s) => s.activeRoomId);
   const autosaveTimer = useRef(null);
+  const [newRoomName, setNewRoomName] = useState("");
+  const [newRoomFloorId, setNewRoomFloorId] = useState("floor_1");
   const [inventoryBranding, setInventoryBranding] = useState({
     companyName: defaultBranding?.companyName || "",
     primaryColor: defaultBranding?.primaryColor || "#1f2937",
@@ -67,6 +70,47 @@ export default function InventoryFlow({
     [rooms]
   );
 
+  useEffect(() => {
+    const activeRoom = roomsById[activeRoomId];
+    if (activeRoom?.floorId) {
+      setNewRoomFloorId(activeRoom.floorId);
+      return;
+    }
+
+    if (!(rooms || []).some((room) => room.floorId === newRoomFloorId)) {
+      setNewRoomFloorId(rooms?.[0]?.floorId || "floor_1");
+    }
+  }, [rooms, roomsById, activeRoomId, newRoomFloorId]);
+
+  const floorOptions = useMemo(() => {
+    const byId = new Map();
+    (rooms || []).forEach((room) => {
+      const floorId = room.floorId || "floor_1";
+      if (!byId.has(floorId)) {
+        byId.set(floorId, {
+          id: floorId,
+          label:
+            floorId === "floor_1"
+              ? "Ground Floor"
+              : floorId === "floor_2"
+                ? "First Floor"
+                : floorId === "floor_3"
+                  ? "Second Floor"
+                  : floorId.replace("floor_", "Floor "),
+        });
+      }
+    });
+    return Array.from(byId.values());
+  }, [rooms]);
+
+  const addInventoryRoom = () => {
+    if (!onAddRoom) return;
+    const roomId = onAddRoom(newRoomName, newRoomFloorId);
+    if (!roomId) return;
+    setNewRoomName("");
+    setActiveRoom(roomId);
+  };
+
   if (!currentReport) {
     return (
       <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
@@ -92,6 +136,33 @@ export default function InventoryFlow({
         <p className="mt-1 text-xs text-zinc-500">
           {completedCount}/{currentReport.rooms.length} rooms complete
         </p>
+
+        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[1fr_180px_auto]">
+          <input
+            value={newRoomName}
+            onChange={(event) => setNewRoomName(event.target.value)}
+            placeholder="Add room to inventory"
+            className="h-9 rounded-lg border border-zinc-300 px-3 text-xs"
+          />
+          <select
+            value={newRoomFloorId}
+            onChange={(event) => setNewRoomFloorId(event.target.value)}
+            className="h-9 rounded-lg border border-zinc-300 bg-white px-2 text-xs"
+          >
+            {floorOptions.map((floor) => (
+              <option key={`inventory-add-floor-${floor.id}`} value={floor.id}>
+                {floor.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={addInventoryRoom}
+            className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white"
+          >
+            Add Room
+          </button>
+        </div>
 
         <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
           {currentReport.rooms.map((roomInventory) => {

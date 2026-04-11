@@ -6,7 +6,7 @@ const BATHROOM_NEAR_DISTANCE = GRID * 4;
 
 function inferRoomType(name = "") {
   const value = String(name).toLowerCase();
-  if (value.includes("hall")) return "hallway";
+  if (value.includes("hall") || value.includes("landing")) return "hallway";
   if (value.includes("bed") || value.includes("ensuite")) return "bedroom";
   if (value.includes("kitchen") || value.includes("utility")) return "kitchen";
   if (value.includes("bath") || value.includes("toilet") || value.includes("wc")) return "bathroom";
@@ -129,6 +129,18 @@ export function normalizePlan(inputPlan) {
 export function applyConstraints(inputPlan) {
   const plan = normalizePlan(inputPlan);
 
+  flattenWithLocations(plan)
+    .filter(({ room }) => {
+      const roomName = String(room.name || "").toLowerCase();
+      return (
+        roomName.includes("upstairs") ||
+        roomName.includes("landing") ||
+        roomName.includes("first floor") ||
+        roomName.includes("1st floor")
+      ) && room.floor !== 1;
+    })
+    .forEach(({ room }) => moveRoom(plan, room.id, 1));
+
   // Bedrooms must be upstairs.
   flattenWithLocations(plan)
     .filter(({ room }) => room.type === "bedroom" && room.floor === 0)
@@ -138,36 +150,6 @@ export function applyConstraints(inputPlan) {
   flattenWithLocations(plan)
     .filter(({ room }) => (room.type === "living" || room.type === "kitchen") && room.floor !== 0)
     .forEach(({ room }) => moveRoom(plan, room.id, 0));
-
-  // Ensure stairs for multi-floor plans and keep at entrance on ground floor.
-  const hasUpperRooms = plan.floors.slice(1).some((floor) => floor.length > 0);
-  const stairsEntries = flattenWithLocations(plan).filter(({ room }) => room.type === "stairs");
-  if (hasUpperRooms && stairsEntries.length === 0) {
-    ensureFloor(plan, 0);
-    plan.floors[0].push(
-      normalizeRoom(
-        {
-          id: `stairs_auto_${Date.now()}`,
-          name: "Stairs",
-          type: "stairs",
-          floor: 0,
-          x: GRID,
-          y: GRID,
-          width: GRID * 2,
-          height: GRID * 2,
-        },
-        0
-      )
-    );
-  }
-
-  flattenWithLocations(plan)
-    .filter(({ room }) => room.type === "stairs")
-    .forEach(({ room }) => {
-      room.floor = 0;
-      room.x = GRID;
-      room.y = GRID;
-    });
 
   // Bathrooms near bedrooms, and stacked where possible.
   const bedroomsByFloor = new Map();

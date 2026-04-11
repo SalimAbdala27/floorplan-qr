@@ -187,6 +187,9 @@ export default function FloorplanGenerator({
   const [selected, setSelected] = useState(null);
   const [dragging, setDragging] = useState(null);
   const [isFullscreenEditor, setIsFullscreenEditor] = useState(false);
+  const [previewFloorId, setPreviewFloorId] = useState(null);
+  const [quickToolsOpen, setQuickToolsOpen] = useState(false);
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [snapRotation, setSnapRotation] = useState(true);
   const [hasUserAdjustedZoom, setHasUserAdjustedZoom] = useState(false);
@@ -200,12 +203,17 @@ export default function FloorplanGenerator({
   const canvasRef = useRef(null);
   const viewportRef = useRef(null);
   const pinchStateRef = useRef({ startDistance: null, startZoom: 1 });
+  const undoStackRef = useRef([]);
+  const lastCommittedLayoutRef = useRef(null);
 
   const normalizedLayout = useMemo(() => normalizeLayout(layout), [layout]);
   const floors = normalizedLayout.floors;
   const activeFloorId = normalizedLayout.activeFloorId;
   const activeFloor =
     floors.find((floor) => floor.id === activeFloorId) || floors[0] || baseFloor("floor_1", "Ground Floor");
+  const previewFloor =
+    floors.find((floor) => floor.id === previewFloorId) ||
+    activeFloor;
 
   const selectedItem = useMemo(() => {
     if (!selected) return null;
@@ -261,6 +269,25 @@ export default function FloorplanGenerator({
       window.removeEventListener("touchcancel", clearDrag);
     };
   }, []);
+
+  useEffect(() => {
+    if (!floors.length) {
+      if (previewFloorId !== null) setPreviewFloorId(null);
+      return;
+    }
+
+    if (!previewFloorId || !floors.some((floor) => floor.id === previewFloorId)) {
+      setPreviewFloorId(activeFloor.id);
+    }
+  }, [floors, activeFloor.id, previewFloorId]);
+
+  useEffect(() => {
+    setPropertiesOpen(Boolean(selectedItem));
+  }, [selectedItem]);
+
+  useEffect(() => {
+    lastCommittedLayoutRef.current = normalizedLayout;
+  }, [normalizedLayout]);
 
   useEffect(() => {
     const onResize = () => setIsLandscape(window.innerWidth > window.innerHeight);
@@ -342,8 +369,25 @@ export default function FloorplanGenerator({
     };
   };
 
-  const commitLayout = (next) => {
+  const cloneLayout = (value) => JSON.parse(JSON.stringify(value));
+
+  const commitLayout = (next, { recordUndo = true } = {}) => {
+    if (recordUndo && lastCommittedLayoutRef.current) {
+      undoStackRef.current = [...undoStackRef.current, cloneLayout(lastCommittedLayoutRef.current)].slice(-30);
+    }
+    lastCommittedLayoutRef.current = next;
     onLayoutChange(next);
+  };
+
+  const undoLayoutChange = () => {
+    const previousLayout = undoStackRef.current.at(-1);
+    if (!previousLayout) return;
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    setSelected(null);
+    setDragging(null);
+    setQuickToolsOpen(false);
+    lastCommittedLayoutRef.current = previousLayout;
+    onLayoutChange(previousLayout);
   };
 
   const setActiveFloor = (nextFloorId) => {
@@ -376,6 +420,18 @@ export default function FloorplanGenerator({
       activeFloorId: id,
     });
     setSelected(null);
+  };
+
+  const removeActiveFloor = () => {
+    if (floors.length <= 1) return;
+    const activeIndex = floors.findIndex((floor) => floor.id === activeFloor.id);
+    const nextFloors = floors.filter((floor) => floor.id !== activeFloor.id);
+    const fallbackFloor = nextFloors[Math.max(0, activeIndex - 1)] || nextFloors[0];
+    setSelected(null);
+    commitLayout({
+      floors: nextFloors,
+      activeFloorId: fallbackFloor?.id || nextFloors[0]?.id || "floor_1",
+    });
   };
 
   const addItem = (type) => {
@@ -447,11 +503,57 @@ export default function FloorplanGenerator({
     setSelected({ type: "spaces", id: item.id, floorId: activeFloor.id });
   };
 
+  const editorPrimaryTools = [
+    {
+      key: "rooms",
+      label: "Room",
+      onClick: () => addItem("rooms"),
+      className: "bg-zinc-800 text-white",
+    },
+    {
+      key: "doors",
+      label: "Door",
+      onClick: () => addItem("doors"),
+      className: "border border-zinc-200 bg-zinc-50 text-zinc-700",
+    },
+    {
+      key: "windows",
+      label: "Window",
+      onClick: () => addItem("windows"),
+      className: "border border-zinc-200 bg-zinc-50 text-zinc-700",
+    },
+    {
+      key: "stairs",
+      label: "Stairs",
+      onClick: () => addItem("stairs"),
+      className: "border border-zinc-200 bg-zinc-50 text-zinc-700",
+    },
+  ];
+
+  const quickSpaceTools = QUICK_TOOL_GROUPS.flatMap((group) =>
+    group.items.map((item) => ({
+      key: `${group.title}-${item.label}`,
+      label: item.buttonLabel || item.label,
+      onClick: () => addLabeledSpace(item.label, item.w, item.h),
+    }))
+  );
+
   const removeSelected = () => {
     if (!selected) return;
     upsertArray(selected.type, (items) => items.filter((item) => item.id !== selected.id));
     setSelected(null);
   };
+
+  const mainEditorTools = [
+    ...editorPrimaryTools,
+    {
+      key: "delete",
+      label: "Delete",
+      onClick: removeSelected,
+      disabled: !selectedItem,
+      className: "bg-red-100 text-red-700 disabled:opacity-50",
+    },
+  ];
 
   const updateSelected = (patch) => {
     if (!selected) return;
@@ -979,7 +1081,7 @@ export default function FloorplanGenerator({
     </button>
   );
 
-  const renderDrawingCanvas = ({ preview = false, className = "" } = {}) => {
+  const renderDrawingCanvas = ({ preview = false, className = "", floor = activeFloor } = {}) => {
     const scale = preview ? Math.min(0.74, effectiveZoom) : effectiveZoom;
     return (
       <div
@@ -1021,11 +1123,11 @@ export default function FloorplanGenerator({
                 touchAction: preview ? "auto" : dragging ? "none" : "pan-y pinch-zoom",
               }}
             >
-              {(activeFloor.rooms || []).map(renderRoom)}
-              {(activeFloor.doors || []).map(renderDoor)}
-              {(activeFloor.windows || []).map(renderWindow)}
-              {(activeFloor.spaces || []).map(renderSpace)}
-              {(activeFloor.stairs || []).map(renderStairs)}
+              {(floor.rooms || []).map(renderRoom)}
+              {(floor.doors || []).map(renderDoor)}
+              {(floor.windows || []).map(renderWindow)}
+              {(floor.spaces || []).map(renderSpace)}
+              {(floor.stairs || []).map(renderStairs)}
             </div>
           </div>
         </div>
@@ -1053,7 +1155,23 @@ export default function FloorplanGenerator({
             Open Fullscreen
           </button>
         </div>
-        {renderDrawingCanvas({ preview: true, className: "mt-2 h-[320px]" })}
+        {floors.length > 1 ? (
+          <div className="mt-2 flex gap-1 overflow-x-auto pb-1">
+            {floors.map((floor) => (
+              <button
+                key={`preview-floor-${floor.id}`}
+                type="button"
+                onClick={() => setPreviewFloorId(floor.id)}
+                className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${
+                  floor.id === previewFloor.id ? "bg-zinc-800 text-white" : "bg-zinc-200 text-zinc-700"
+                }`}
+              >
+                {floor.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {renderDrawingCanvas({ preview: true, className: "mt-2 h-[320px]", floor: previewFloor })}
       </div>
     );
   }
@@ -1062,35 +1180,56 @@ export default function FloorplanGenerator({
     <div className="fixed inset-0 z-50 bg-white">
       <div className="flex h-full flex-col">
         <div className="border-b border-zinc-200 bg-white px-2 py-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 gap-1 overflow-x-auto">
-              {floors.map((floor) => (
-                <button
-                  key={floor.id}
-                  type="button"
-                  onClick={() => setActiveFloor(floor.id)}
-                  className={`h-8 shrink-0 rounded-lg px-2.5 text-[11px] font-semibold ${
-                    floor.id === activeFloor.id ? "bg-zinc-800 text-white" : "bg-zinc-200 text-zinc-700"
-                  }`}
-                >
-                  {floor.name}
-                </button>
-              ))}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Floors</p>
+              <div className="mt-1 flex min-w-0 gap-1 overflow-x-auto pb-1">
+                {floors.map((floor) => (
+                  <button
+                    key={floor.id}
+                    type="button"
+                    onClick={() => setActiveFloor(floor.id)}
+                    className={`h-9 shrink-0 rounded-xl px-3 text-[11px] font-semibold ${
+                      floor.id === activeFloor.id ? "bg-zinc-800 text-white" : "bg-zinc-200 text-zinc-700"
+                    }`}
+                  >
+                    {floor.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex">
+              <button
+                type="button"
+                onClick={undoLayoutChange}
+                disabled={undoStackRef.current.length === 0}
+                className="h-9 rounded-xl bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700 disabled:opacity-50"
+              >
+                Undo
+              </button>
               <button
                 type="button"
                 onClick={addFloor}
-                className="h-8 shrink-0 rounded-lg bg-zinc-200 px-2.5 text-[11px] font-semibold text-zinc-700"
+                className="h-9 rounded-xl bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
               >
                 + Floor
               </button>
+              <button
+                type="button"
+                onClick={removeActiveFloor}
+                disabled={floors.length <= 1}
+                className="h-9 rounded-xl bg-red-100 px-3 text-[11px] font-semibold text-red-700 disabled:opacity-50"
+              >
+                Delete Floor
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFullscreenEditor(false)}
+                className="h-9 rounded-xl bg-zinc-800 px-3 text-[11px] font-semibold text-white"
+              >
+                Done
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsFullscreenEditor(false)}
-              className="h-8 shrink-0 rounded-lg bg-zinc-800 px-3 text-xs font-semibold text-white"
-            >
-              Done
-            </button>
           </div>
           <div className="mt-2 flex items-center justify-between gap-2">
             <p className="truncate text-[11px] text-zinc-500">
@@ -1134,130 +1273,212 @@ export default function FloorplanGenerator({
         </div>
 
         <div className="relative flex-1 overflow-hidden bg-neutral-100">
-          <div className={`h-full p-2 ${isLandscape ? "pr-[84px]" : "pb-[112px]"}`}>
+          <div
+            className={`h-full p-2 ${
+              selectedItem && propertiesOpen
+                ? quickToolsOpen
+                  ? "pb-[344px]"
+                  : "pb-[240px]"
+                : quickToolsOpen
+                  ? "pb-[224px]"
+                  : "pb-[132px]"
+            }`}
+          >
             {renderDrawingCanvas({ className: "h-full" })}
           </div>
 
-          <div
-            className={
-              isLandscape
-                ? "absolute inset-y-0 right-0 w-[84px] border-l border-zinc-200 bg-white p-1.5 overflow-y-auto"
-                : "absolute inset-x-0 bottom-0 h-[112px] border-t border-zinc-200 bg-white p-1.5 overflow-x-auto"
-            }
-          >
-            <div className={isLandscape ? "space-y-1.5" : "flex h-full items-start gap-1.5"}>
-              <button type="button" onClick={() => addItem("rooms")} className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg bg-zinc-800 px-1 py-2 text-[10px] font-semibold text-white`}>Room</button>
-              <button type="button" onClick={() => addItem("doors")} className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg border border-zinc-200 bg-zinc-50 px-1 py-2 text-[10px] font-semibold text-zinc-700`}>Door</button>
-              <button type="button" onClick={() => addItem("windows")} className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg border border-zinc-200 bg-zinc-50 px-1 py-2 text-[10px] font-semibold text-zinc-700`}>Window</button>
-              <button type="button" onClick={() => addItem("stairs")} className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg border border-zinc-200 bg-zinc-50 px-1 py-2 text-[10px] font-semibold text-zinc-700`}>Stairs</button>
-              {QUICK_TOOL_GROUPS.flatMap((group) =>
-                group.items.map((item) => (
+          {quickToolsOpen ? (
+            <div className="absolute inset-x-2 bottom-[116px] rounded-2xl border border-zinc-200 bg-white/98 p-3 shadow-lg backdrop-blur">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                    Quick Add
+                  </p>
+                  <p className="text-[11px] text-zinc-500">Tap to place common estate-agent items fast.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setQuickToolsOpen(false)}
+                  className="h-8 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {quickSpaceTools.map((tool) => (
                   <button
-                    key={`rail-${group.title}-${item.label}`}
+                    key={`quick-panel-${tool.key}`}
                     type="button"
-                    onClick={() => addLabeledSpace(item.label, item.w, item.h)}
-                    className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg border border-zinc-200 bg-white px-1 py-2 text-[10px] font-semibold text-zinc-700`}
+                    onClick={() => {
+                      tool.onClick();
+                      setQuickToolsOpen(false);
+                    }}
+                    className="rounded-xl border border-zinc-200 bg-zinc-50 px-2 py-3 text-[11px] font-semibold text-zinc-700"
                   >
-                    {item.buttonLabel || item.label}
+                    {tool.label}
                   </button>
-                ))
-              )}
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {selectedItem ? (
+            <div
+              className={`absolute z-10 ${
+                isLandscape ? "right-2 w-[320px]" : "left-2 right-2"
+              } ${quickToolsOpen ? "bottom-[292px]" : "bottom-[124px]"}`}
+            >
+              <div className="rounded-2xl border border-zinc-200 bg-white/98 p-3 shadow-lg backdrop-blur">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Selection</p>
+                    <p className="text-xs font-semibold text-zinc-800">
+                      {selectedItem.name || selectedItem.label || "Selected item"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPropertiesOpen((prev) => !prev)}
+                      className="h-8 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
+                    >
+                      {propertiesOpen ? "Hide" : "Show"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removeSelected}
+                      className="h-8 rounded-lg bg-red-100 px-3 text-[11px] font-semibold text-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                {propertiesOpen ? (
+                  <>
+                    <input
+                      value={selectedItem.name || selectedItem.label || ""}
+                      onChange={(event) =>
+                        updateSelected(
+                          selected?.type === "rooms" ? { name: event.target.value } : { label: event.target.value }
+                        )
+                      }
+                      className="mt-3 h-9 w-full rounded-xl border border-zinc-300 px-3 text-sm"
+                    />
+
+                    {selected?.type === "rooms" ? (
+                      <>
+                        <select
+                          value={selected.floorId || activeFloor.id}
+                          onChange={(event) => moveSelectedRoomToFloor(event.target.value)}
+                          className="mt-2 h-9 w-full rounded-xl border border-zinc-300 bg-white px-3 text-sm"
+                        >
+                          {floors.map((floor) => (
+                            <option key={`fs-floor-${floor.id}`} value={floor.id}>
+                              {floor.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="1"
+                            max="20"
+                            value={selectedRoomWidthMeters}
+                            onChange={(event) =>
+                              updateSelected({
+                                w: clamp(
+                                  Math.round(parseDecimal(event.target.value, selectedRoomWidthMeters) * PIXELS_PER_METER),
+                                  40,
+                                  800
+                                ),
+                              })
+                            }
+                            className="h-9 rounded-xl border border-zinc-300 px-3 text-sm"
+                          />
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="1"
+                            max="20"
+                            value={selectedRoomHeightMeters}
+                            onChange={(event) =>
+                              updateSelected({
+                                h: clamp(
+                                  Math.round(parseDecimal(event.target.value, selectedRoomHeightMeters) * PIXELS_PER_METER),
+                                  40,
+                                  800
+                                ),
+                              })
+                            }
+                            className="h-9 rounded-xl border border-zinc-300 px-3 text-sm"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="mt-2 grid grid-cols-3 gap-2">
+                        {["w", "h", "angle"].map((key) => (
+                          <input
+                            key={`prop-${key}`}
+                            type="number"
+                            value={selectedItem[key] ?? 0}
+                            onChange={(event) =>
+                              updateSelected({
+                                [key]:
+                                  key === "angle"
+                                    ? clamp(parseNumber(event.target.value, selectedItem[key] ?? 0), -180, 180)
+                                    : clamp(parseNumber(event.target.value, selectedItem[key] ?? 0), 4, 800),
+                              })
+                            }
+                            className="h-9 rounded-xl border border-zinc-300 px-2 text-sm"
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="absolute inset-x-0 bottom-0 border-t border-zinc-200 bg-white/98 px-2 py-2 shadow-[0_-8px_24px_rgba(0,0,0,0.06)] backdrop-blur">
+            <div className="grid grid-cols-5 gap-2">
+              {mainEditorTools.map((tool) => (
+                <button
+                  key={`toolbar-${tool.key}`}
+                  type="button"
+                  onClick={tool.onClick}
+                  disabled={tool.disabled}
+                  className={`h-11 rounded-xl px-2 text-[11px] font-semibold ${tool.className || "border border-zinc-200 bg-zinc-50 text-zinc-700"}`}
+                >
+                  {tool.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={removeSelected}
-                disabled={!selectedItem}
-                className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg bg-red-100 px-1 py-2 text-[10px] font-semibold text-red-700 disabled:opacity-50`}
+                onClick={() => setQuickToolsOpen((prev) => !prev)}
+                className={`h-10 rounded-xl px-3 text-xs font-semibold ${
+                  quickToolsOpen ? "bg-zinc-800 text-white" : "bg-zinc-100 text-zinc-700"
+                }`}
               >
-                Delete
+                {quickToolsOpen ? "Hide Quick Add" : "Quick Add Items"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedItem) return;
+                  setPropertiesOpen((prev) => !prev);
+                }}
+                disabled={!selectedItem}
+                className="h-10 rounded-xl bg-zinc-100 px-3 text-xs font-semibold text-zinc-700 disabled:opacity-50"
+              >
+                {selectedItem ? (propertiesOpen ? "Hide Selection" : "Show Selection") : "Select Item"}
               </button>
             </div>
           </div>
-
-          {selectedItem ? (
-            <div className="absolute left-2 top-2 w-56 rounded-lg border border-zinc-200 bg-white/95 p-2 shadow-sm">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-600">Properties</p>
-              <input
-                value={selectedItem.name || selectedItem.label || ""}
-                onChange={(event) =>
-                  updateSelected(
-                    selected?.type === "rooms" ? { name: event.target.value } : { label: event.target.value }
-                  )
-                }
-                className="mt-2 h-8 w-full rounded-lg border border-zinc-300 px-2 text-xs"
-              />
-
-              {selected?.type === "rooms" ? (
-                <>
-                  <select
-                    value={selected.floorId || activeFloor.id}
-                    onChange={(event) => moveSelectedRoomToFloor(event.target.value)}
-                    className="mt-2 h-8 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs"
-                  >
-                    {floors.map((floor) => (
-                      <option key={`fs-floor-${floor.id}`} value={floor.id}>
-                        {floor.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="1"
-                      max="20"
-                      value={selectedRoomWidthMeters}
-                      onChange={(event) =>
-                        updateSelected({
-                          w: clamp(
-                            Math.round(parseDecimal(event.target.value, selectedRoomWidthMeters) * PIXELS_PER_METER),
-                            40,
-                            800
-                          ),
-                        })
-                      }
-                      className="h-8 rounded-lg border border-zinc-300 px-2 text-xs"
-                    />
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="1"
-                      max="20"
-                      value={selectedRoomHeightMeters}
-                      onChange={(event) =>
-                        updateSelected({
-                          h: clamp(
-                            Math.round(parseDecimal(event.target.value, selectedRoomHeightMeters) * PIXELS_PER_METER),
-                            40,
-                            800
-                          ),
-                        })
-                      }
-                      className="h-8 rounded-lg border border-zinc-300 px-2 text-xs"
-                    />
-                  </div>
-                </>
-              ) : (
-                <div className="mt-2 grid grid-cols-3 gap-1">
-                  {["w", "h", "angle"].map((key) => (
-                    <input
-                      key={`prop-${key}`}
-                      type="number"
-                      value={selectedItem[key] ?? 0}
-                      onChange={(event) =>
-                        updateSelected({
-                          [key]:
-                            key === "angle"
-                              ? clamp(parseNumber(event.target.value, selectedItem[key] ?? 0), -180, 180)
-                              : clamp(parseNumber(event.target.value, selectedItem[key] ?? 0), 4, 800),
-                        })
-                      }
-                      className="h-8 rounded-lg border border-zinc-300 px-1.5 text-xs"
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
         </div>
       </div>
     </div>

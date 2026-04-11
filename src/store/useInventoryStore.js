@@ -64,10 +64,14 @@ function mergeRoomInventory(defaultRoom, existingRoom) {
   const allLegacyFairOrEmpty = mergedItems.every(
     (item) => !item.condition || item.condition === "fair" || item.condition === "na"
   );
+  const hasLegacyDefaultOverallCondition =
+    !existingRoom.overallCondition ||
+    existingRoom.overallCondition === "fair" ||
+    existingRoom.overallCondition === "na";
   const shouldMigrateLegacyFairToNa =
     !mergedMedia.length &&
     !mergedVisuallyDocumented &&
-    existingRoom.overallCondition === "fair" &&
+    hasLegacyDefaultOverallCondition &&
     allNotesEmpty &&
     allLegacyFairOrEmpty;
 
