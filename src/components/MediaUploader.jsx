@@ -77,21 +77,19 @@ export default function MediaUploader({ onCapturePanorama, onCaptureDetailPhoto 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <label className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white flex items-center cursor-pointer">
-        {uploading ? "Uploading panorama..." : "Capture Room (Panorama)"}
+        {uploading ? "Adding panorama..." : "Add Panorama"}
         <input
           type="file"
           accept="image/*"
-          capture="environment"
           className="hidden"
           onChange={(event) => handleFile(event.target.files?.[0], "pano")}
         />
       </label>
       <label className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700 flex items-center cursor-pointer">
-        Quick Capture Detail
+        {uploading ? "Adding detail..." : "Add Photo"}
         <input
           type="file"
           accept="image/*"
-          capture="environment"
           className="hidden"
           onChange={(event) => handleFile(event.target.files?.[0], "detail")}
         />

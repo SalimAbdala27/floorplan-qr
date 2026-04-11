@@ -15,11 +15,6 @@ function parseNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function parseDecimal(value, fallback) {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
 function normalizeAngle(degrees) {
   let angle = Number.isFinite(Number(degrees)) ? Number(degrees) : 0;
   while (angle > 180) angle -= 360;
@@ -129,7 +124,7 @@ function normalizeLayout(layout) {
 }
 
 function getMinSize(type) {
-  if (type === "rooms") return { w: 70, h: 55 };
+  if (type === "rooms") return { w: 96, h: 76 };
   if (type === "spaces") return { w: 40, h: 26 };
   if (type === "stairs") return { w: 40, h: 40 };
   return { w: 22, h: 8 };
@@ -282,7 +277,7 @@ export default function FloorplanGenerator({
   }, [floors, activeFloor.id, previewFloorId]);
 
   useEffect(() => {
-    setPropertiesOpen(Boolean(selectedItem));
+    setPropertiesOpen(false);
   }, [selectedItem]);
 
   useEffect(() => {
@@ -443,8 +438,8 @@ export default function FloorplanGenerator({
         name: `Room ${((activeFloor.rooms || []).length || 0) + 1}`,
         x: 36,
         y: 36,
-        w: 160,
-        h: 110,
+        w: 180,
+        h: 130,
         angle: 0,
       },
       doors: {
@@ -809,7 +804,7 @@ export default function FloorplanGenerator({
     selected?.floorId === activeFloor.id && selected?.type === type && selected?.id === item.id ? (
       <span
         onPointerDown={(event) => startResizeDrag(event, type, item)}
-        className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 cursor-se-resize rounded-sm border border-emerald-700 bg-emerald-500"
+        className="absolute -bottom-3 -right-3 h-7 w-7 cursor-se-resize rounded-lg border-2 border-emerald-700 bg-emerald-500 shadow"
       />
     ) : null;
 
@@ -837,7 +832,7 @@ export default function FloorplanGenerator({
     selected?.floorId === activeFloor.id && selected?.type === type && selected?.id === item.id ? (
       <span
         onPointerDown={(event) => startRotateDrag(event, type, item)}
-        className="absolute -top-5 left-1/2 h-4 w-4 -translate-x-1/2 cursor-grab rounded-full border border-blue-700 bg-blue-500"
+        className="absolute -top-8 left-1/2 h-7 w-7 -translate-x-1/2 cursor-grab rounded-full border-2 border-blue-700 bg-blue-500 shadow"
       />
     ) : null;
 
@@ -937,7 +932,7 @@ export default function FloorplanGenerator({
       type="button"
       onClick={() => setSelected({ type: "rooms", id: room.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "rooms", room)}
-      className={`absolute box-border rounded-[2px] border-[4px] border-black bg-white px-1 text-center text-[10px] font-semibold text-zinc-800 transition ${
+      className={`absolute box-border rounded-md border-[4px] border-black bg-white px-2 py-1 text-center text-[11px] font-semibold text-zinc-800 transition ${
         selected?.floorId === activeFloor.id && selected?.type === "rooms" && selected?.id === room.id
           ? selectedStyle
           : ""
@@ -945,7 +940,7 @@ export default function FloorplanGenerator({
       style={getItemStyle(room)}
     >
       <span className="block truncate">{room.name}</span>
-      <span className="block text-[9px] font-medium text-zinc-500">
+      <span className="block text-[10px] font-medium text-zinc-500">
         {Number((room.w / PIXELS_PER_METER).toFixed(1))}m x {Number((room.h / PIXELS_PER_METER).toFixed(1))}m
       </span>
       {renderResizeHandle("rooms", room)}
@@ -1325,8 +1320,8 @@ export default function FloorplanGenerator({
           {selectedItem ? (
             <div
               className={`absolute z-10 ${
-                isLandscape ? "right-2 w-[320px]" : "left-2 right-2"
-              } ${quickToolsOpen ? "bottom-[292px]" : "bottom-[124px]"}`}
+                isLandscape ? "right-2 top-2 w-[300px]" : "left-2 right-2 top-2"
+              }`}
             >
               <div className="rounded-2xl border border-zinc-200 bg-white/98 p-3 shadow-lg backdrop-blur">
                 <div className="flex items-center justify-between gap-2">
@@ -1342,7 +1337,7 @@ export default function FloorplanGenerator({
                       onClick={() => setPropertiesOpen((prev) => !prev)}
                       className="h-8 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
                     >
-                      {propertiesOpen ? "Hide" : "Show"}
+                    {propertiesOpen ? "Hide" : "Show"}
                     </button>
                     <button
                       type="button"
@@ -1379,41 +1374,69 @@ export default function FloorplanGenerator({
                             </option>
                           ))}
                         </select>
-                        <div className="mt-2 grid grid-cols-2 gap-2">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="1"
-                            max="20"
-                            value={selectedRoomWidthMeters}
-                            onChange={(event) =>
-                              updateSelected({
-                                w: clamp(
-                                  Math.round(parseDecimal(event.target.value, selectedRoomWidthMeters) * PIXELS_PER_METER),
-                                  40,
-                                  800
-                                ),
-                              })
-                            }
-                            className="h-9 rounded-xl border border-zinc-300 px-3 text-sm"
-                          />
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="1"
-                            max="20"
-                            value={selectedRoomHeightMeters}
-                            onChange={(event) =>
-                              updateSelected({
-                                h: clamp(
-                                  Math.round(parseDecimal(event.target.value, selectedRoomHeightMeters) * PIXELS_PER_METER),
-                                  40,
-                                  800
-                                ),
-                              })
-                            }
-                            className="h-9 rounded-xl border border-zinc-300 px-3 text-sm"
-                          />
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <label className="text-[11px] font-medium text-zinc-600">
+                            Width (m)
+                            <input
+                              type="number"
+                              step="0.1"
+                              min={Number((getMinSize("rooms").w / PIXELS_PER_METER).toFixed(1))}
+                              max="20"
+                              value={selectedRoomWidthMeters}
+                              onChange={(event) => {
+                                const nextValue = Number.parseFloat(event.target.value);
+                                if (!Number.isFinite(nextValue)) return;
+                                updateSelected({
+                                  w: clamp(
+                                    Math.round(nextValue * PIXELS_PER_METER),
+                                    getMinSize("rooms").w,
+                                    800
+                                  ),
+                                });
+                              }}
+                              className="mt-1 h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
+                            />
+                          </label>
+                          <label className="text-[11px] font-medium text-zinc-600">
+                            Height (m)
+                            <input
+                              type="number"
+                              step="0.1"
+                              min={Number((getMinSize("rooms").h / PIXELS_PER_METER).toFixed(1))}
+                              max="20"
+                              value={selectedRoomHeightMeters}
+                              onChange={(event) => {
+                                const nextValue = Number.parseFloat(event.target.value);
+                                if (!Number.isFinite(nextValue)) return;
+                                updateSelected({
+                                  h: clamp(
+                                    Math.round(nextValue * PIXELS_PER_METER),
+                                    getMinSize("rooms").h,
+                                    800
+                                  ),
+                                });
+                              }}
+                              className="mt-1 h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
+                            />
+                          </label>
+                          <label className="col-span-2 text-[11px] font-medium text-zinc-600">
+                            Rotation
+                            <input
+                              type="number"
+                              step="1"
+                              min="-180"
+                              max="180"
+                              value={selectedItem.angle || 0}
+                              onChange={(event) => {
+                                const nextValue = Number.parseFloat(event.target.value);
+                                if (!Number.isFinite(nextValue)) return;
+                                updateSelected({
+                                  angle: clamp(nextValue, -180, 180),
+                                });
+                              }}
+                              className="mt-1 h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
+                            />
+                          </label>
                         </div>
                       </>
                     ) : (
