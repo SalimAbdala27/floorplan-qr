@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -39,55 +41,59 @@ function compressDataUrl(image, maxLongEdge, quality = 0.72) {
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-export default function MediaUploader({ onAddMedia, onQuickCapture }) {
-  const handleFile = async (file, quickMode = false) => {
+export default function MediaUploader({ onCapturePanorama, onCaptureDetailPhoto }) {
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (file, mode = "pano") => {
     if (!file) return;
 
     try {
+      setUploading(true);
       const sourceDataUrl = await readFileAsDataUrl(file);
-      const meta = await loadImageMeta(sourceDataUrl);
-      const isPano = meta.width > meta.height * 2;
+      await loadImageMeta(sourceDataUrl);
       const imageEl = await loadImageElement(sourceDataUrl);
       const compressedDataUrl =
-        compressDataUrl(imageEl, isPano ? 2200 : 1600, isPano ? 0.68 : 0.74) || sourceDataUrl;
+        compressDataUrl(imageEl, mode === "pano" ? 2200 : 1600, mode === "pano" ? 0.68 : 0.74) || sourceDataUrl;
 
       const media = {
         id: `media_${Date.now()}`,
-        type: isPano ? "pano" : "photo",
+        type: mode === "pano" ? "pano" : "photo",
         url: compressedDataUrl,
         preview: compressedDataUrl,
       };
 
-      if (quickMode) {
-        onQuickCapture(media);
-      } else {
-        onAddMedia(media);
+      if (mode === "pano") {
+        onCapturePanorama(media);
+      } else if (onCaptureDetailPhoto) {
+        onCaptureDetailPhoto(media);
       }
     } catch {
       // ignore bad files
+    } finally {
+      setUploading(false);
     }
   };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <label className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white flex items-center cursor-pointer">
-        Upload Photo / Pano
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(event) => handleFile(event.target.files?.[0], false)}
-        />
-      </label>
-
-      <label className="h-9 rounded-lg bg-emerald-700 px-3 text-[11px] font-semibold text-white flex items-center cursor-pointer">
-        Quick Capture
+        {uploading ? "Uploading panorama..." : "Capture Room (Panorama)"}
         <input
           type="file"
           accept="image/*"
           capture="environment"
           className="hidden"
-          onChange={(event) => handleFile(event.target.files?.[0], true)}
+          onChange={(event) => handleFile(event.target.files?.[0], "pano")}
+        />
+      </label>
+      <label className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700 flex items-center cursor-pointer">
+        Quick Capture Detail
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(event) => handleFile(event.target.files?.[0], "detail")}
         />
       </label>
     </div>

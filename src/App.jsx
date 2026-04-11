@@ -1187,6 +1187,10 @@ function HomeScreen({
     const safeHomeName = (home.name || "Home").replace(/[^\w\s-]/g, "").trim() || "home";
     const primaryRgb = hexToRgb(pdfBranding.primaryColor, [31, 41, 55]);
     const accentRgb = hexToRgb(pdfBranding.accentColor, [226, 232, 240]);
+    const formatInventoryCondition = (value) =>
+      !value || value === "na"
+        ? "Not stated / N/A"
+        : `${String(value).charAt(0).toUpperCase()}${String(value).slice(1)}`;
     let currentY = 32;
 
     if (pdfBranding.logoDataUrl) {
@@ -1755,15 +1759,19 @@ function HomeScreen({
           roomInventory.media?.filter((media) => media.type === "pano").length || 0;
 
         if (!roomInventory.items?.length) {
-          return [[roomName, "-", "-", `Media: ${mediaCount} (${panoCount} pano)`]];
+          return [[roomName, "-", "-", `Overall: ${formatInventoryCondition(roomInventory.overallCondition)} · Media: ${mediaCount} (${panoCount} pano)`]];
         }
 
         return roomInventory.items.map((item, index) => [
           index === 0 ? roomName : "",
           item.name || "-",
-          item.condition || "-",
+          formatInventoryCondition(item.condition),
           `${item.notes || ""}${
-            index === 0 ? ` ${item.notes ? "· " : ""}Media: ${mediaCount} (${panoCount} pano)` : ""
+            index === 0
+              ? ` ${item.notes ? "· " : ""}Overall: ${formatInventoryCondition(
+                  roomInventory.overallCondition
+                )} · Media: ${mediaCount} (${panoCount} pano)`
+              : ""
           }`,
         ]);
       });
@@ -1771,6 +1779,53 @@ function HomeScreen({
         ["Room", "Element", "Condition", "Notes / Media"],
         inventoryBody.length ? inventoryBody : [["No inventory report", "-", "-", "-"]]
       );
+
+      inventoryRooms.forEach((roomInventory) => {
+        const roomName =
+          home.rooms.find((room) => room.id === roomInventory.roomId)?.name || roomInventory.roomId;
+        const mediaItems = roomInventory.media || [];
+        if (!mediaItems.length) return;
+
+        if (currentY > 215) {
+          doc.addPage();
+          currentY = 20;
+        }
+        doc.setFontSize(11);
+        doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+        doc.text(`Inventory Media: ${roomName}`, 14, currentY);
+        currentY += 4;
+        doc.setFontSize(9);
+        doc.setTextColor(70, 70, 70);
+        doc.text(
+          `Overall condition: ${formatInventoryCondition(roomInventory.overallCondition)}`,
+          14,
+          currentY
+        );
+        currentY += 4;
+
+        mediaItems.slice(0, 3).forEach((media) => {
+          if (currentY > 230) {
+            doc.addPage();
+            currentY = 20;
+          }
+          if (media.preview || media.url?.startsWith("data:image")) {
+            try {
+              const imageData = media.preview || media.url;
+              doc.addImage(imageData, "JPEG", 14, currentY, 78, 44);
+            } catch {
+              doc.text("Image unavailable", 14, currentY + 4);
+            }
+          }
+          doc.setTextColor(90, 90, 90);
+          doc.setFontSize(8);
+          doc.text(media.type === "pano" ? "Panorama" : "Photo", 96, currentY + 5);
+          if (media.type === "pano") {
+            doc.text("360 panorama captured", 96, currentY + 10, { maxWidth: 95 });
+          }
+          currentY += 48;
+        });
+        currentY += 2;
+      });
     }
 
     const fileName = `${safeHomeName.toLowerCase().replace(/\s+/g, "_")}_property_report.pdf`;
@@ -2277,6 +2332,7 @@ function HomeScreen({
               propertyName={home.name}
               rooms={home.rooms}
               initialReport={home.inventoryReport}
+              defaultBranding={pdfBranding}
               onReportChange={(report) =>
                 updateHome((prev) => ({
                   ...prev,

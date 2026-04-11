@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import InventoryRoom from "./InventoryRoom.jsx";
 import {
   useInventoryStore,
@@ -8,7 +8,8 @@ import {
   setRoomOverallCondition,
   addRoomMedia,
   removeRoomMedia,
-  quickCaptureCompleteRoom,
+  capturePanoramaForRoom,
+  applyRoomConditionToAll,
   validateInventoryReport,
   getRoomCompletion,
 } from "../store/useInventoryStore.js";
@@ -20,10 +21,30 @@ export default function InventoryFlow({
   rooms,
   initialReport,
   onReportChange,
+  defaultBranding,
 }) {
   const currentReport = useInventoryStore((s) => s.currentReport);
   const activeRoomId = useInventoryStore((s) => s.activeRoomId);
   const autosaveTimer = useRef(null);
+  const [inventoryBranding, setInventoryBranding] = useState({
+    companyName: defaultBranding?.companyName || "",
+    primaryColor: defaultBranding?.primaryColor || "#1f2937",
+    accentColor: defaultBranding?.accentColor || "#e2e8f0",
+    logoDataUrl: defaultBranding?.logoDataUrl || null,
+  });
+
+  const onBrandLogoSelected = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setInventoryBranding((prev) => ({
+        ...prev,
+        logoDataUrl: String(reader.result || ""),
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   useEffect(() => {
     initializeInventoryReport(propertyId, rooms, initialReport);
@@ -105,11 +126,76 @@ export default function InventoryFlow({
           roomInventory={activeRoomInventory}
           onUpdateItem={(itemId, patch) => updateInventoryItem(activeRoomInventory.roomId, itemId, patch)}
           onSetOverallCondition={(condition) => setRoomOverallCondition(activeRoomInventory.roomId, condition)}
-          onAddMedia={(media) => addRoomMedia(activeRoomInventory.roomId, media)}
           onRemoveMedia={(mediaId) => removeRoomMedia(activeRoomInventory.roomId, mediaId)}
-          onQuickCapture={(media) => quickCaptureCompleteRoom(activeRoomInventory.roomId, media)}
+          onCapturePanorama={(media) => capturePanoramaForRoom(activeRoomInventory.roomId, media)}
+          onCaptureDetailPhoto={(media) => addRoomMedia(activeRoomInventory.roomId, media)}
+          onApplyQuickCondition={(condition) =>
+            applyRoomConditionToAll(activeRoomInventory.roomId, condition)
+          }
         />
       ) : null}
+
+      <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+        <p className="text-xs font-semibold text-zinc-700">PDF Branding</p>
+        <div className="mt-2 space-y-2">
+          <input
+            type="text"
+            value={inventoryBranding.companyName}
+            onChange={(event) =>
+              setInventoryBranding((prev) => ({
+                ...prev,
+                companyName: event.target.value,
+              }))
+            }
+            placeholder="Company name"
+            className="h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="color"
+              value={inventoryBranding.primaryColor}
+              onChange={(event) =>
+                setInventoryBranding((prev) => ({
+                  ...prev,
+                  primaryColor: event.target.value,
+                }))
+              }
+              className="h-9 w-full rounded border border-zinc-300"
+            />
+            <input
+              type="color"
+              value={inventoryBranding.accentColor}
+              onChange={(event) =>
+                setInventoryBranding((prev) => ({
+                  ...prev,
+                  accentColor: event.target.value,
+                }))
+              }
+              className="h-9 w-full rounded border border-zinc-300"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700 flex items-center cursor-pointer">
+              Upload Logo
+              <input type="file" accept="image/*" className="hidden" onChange={onBrandLogoSelected} />
+            </label>
+            {inventoryBranding.logoDataUrl ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setInventoryBranding((prev) => ({
+                    ...prev,
+                    logoDataUrl: null,
+                  }))
+                }
+                className="h-9 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
 
       <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
         <div className="flex items-center justify-between gap-2">
@@ -121,9 +207,12 @@ export default function InventoryFlow({
           </div>
           <button
             type="button"
-            onClick={() => generateInventoryPdf(currentReport, roomsById, propertyName)}
-            disabled={!validation.valid}
-            className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white disabled:opacity-50"
+            onClick={() =>
+              generateInventoryPdf(currentReport, roomsById, propertyName, {
+                branding: inventoryBranding,
+              })
+            }
+            className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white"
           >
             Export Inventory PDF
           </button>

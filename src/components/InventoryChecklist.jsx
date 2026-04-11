@@ -4,8 +4,9 @@ export default function InventoryChecklist({ roomInventory, onUpdateItem }) {
       {roomInventory.items.map((item) => (
         <div key={item.id} className="rounded-lg border border-zinc-200 bg-zinc-50 p-2">
           <p className="text-xs font-semibold text-zinc-700">{item.name}</p>
-          <div className="mt-1 grid grid-cols-3 gap-1">
+          <div className="mt-1 grid grid-cols-4 gap-1">
             {[
+              { key: "na", label: "N/A" },
               { key: "good", label: "Good" },
               { key: "fair", label: "Fair" },
               { key: "poor", label: "Poor" },

@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 
 const DEFAULT_ITEMS = ["Walls", "Floor", "Ceiling", "Windows", "Doors", "Furniture"];
+const DETAIL_CONDITIONS = ["good", "fair", "poor", "na"];
+const QUICK_CONDITIONS = ["good", "fair", "poor"];
 
 let state = {
   currentReport: null,
@@ -33,11 +35,13 @@ function createDefaultRoomInventory(roomId) {
     items: DEFAULT_ITEMS.map((itemName) => ({
       id: `${roomId}_${itemName.toLowerCase()}`,
       name: itemName,
-      condition: "fair",
+      condition: "na",
       notes: "",
     })),
     media: [],
-    overallCondition: "fair",
+    panoramaImage: "",
+    visuallyDocumented: false,
+    overallCondition: "na",
   };
 }
 
@@ -47,13 +51,44 @@ function mergeRoomInventory(defaultRoom, existingRoom) {
   const mergedItems = defaultRoom.items.map((item) => ({
     ...item,
     ...(existingItemsByName.get(item.name) || {}),
+    condition:
+      existingItemsByName.get(item.name)?.condition &&
+      ["good", "fair", "poor", "na"].includes(existingItemsByName.get(item.name)?.condition)
+        ? existingItemsByName.get(item.name).condition
+        : "na",
   }));
+
+  const mergedMedia = Array.isArray(existingRoom.media) ? existingRoom.media : [];
+  const mergedVisuallyDocumented = Boolean(existingRoom.visuallyDocumented);
+  const allNotesEmpty = mergedItems.every((item) => !String(item.notes || "").trim());
+  const allLegacyFairOrEmpty = mergedItems.every(
+    (item) => !item.condition || item.condition === "fair" || item.condition === "na"
+  );
+  const shouldMigrateLegacyFairToNa =
+    !mergedMedia.length &&
+    !mergedVisuallyDocumented &&
+    existingRoom.overallCondition === "fair" &&
+    allNotesEmpty &&
+    allLegacyFairOrEmpty;
 
   return {
     ...defaultRoom,
     ...existingRoom,
-    items: mergedItems,
-    media: Array.isArray(existingRoom.media) ? existingRoom.media : [],
+    items: shouldMigrateLegacyFairToNa
+      ? mergedItems.map((item) => ({
+          ...item,
+          condition: "na",
+        }))
+      : mergedItems,
+    media: mergedMedia,
+    panoramaImage:
+      typeof existingRoom.panoramaImage === "string" ? existingRoom.panoramaImage : "",
+    visuallyDocumented: mergedVisuallyDocumented,
+    overallCondition: shouldMigrateLegacyFairToNa
+      ? "na"
+      : ["good", "fair", "poor", "na"].includes(existingRoom.overallCondition)
+        ? existingRoom.overallCondition
+        : "na",
   };
 }
 
@@ -131,6 +166,10 @@ export function addRoomMedia(roomId, media) {
         ? {
             ...room,
             media: [...room.media, media],
+            panoramaImage:
+              media.type === "pano" ? media.preview || media.url || room.panoramaImage : room.panoramaImage,
+            visuallyDocumented:
+              media.type === "pano" ? true : room.visuallyDocumented,
           }
         : room
     ),
@@ -144,9 +183,36 @@ export function removeRoomMedia(roomId, mediaId) {
     ...state.currentReport,
     rooms: state.currentReport.rooms.map((room) =>
       room.roomId === roomId
+        ? (() => {
+            const filtered = room.media.filter((m) => m.id !== mediaId);
+            const latestPano =
+              filtered.find((m) => m.type === "pano")?.preview ||
+              filtered.find((m) => m.type === "pano")?.url ||
+              "";
+            return {
+              ...room,
+              media: filtered,
+              panoramaImage: latestPano,
+              visuallyDocumented: Boolean(latestPano),
+            };
+          })()
+        : room
+    ),
+  };
+  setState({ currentReport: next });
+}
+
+export function capturePanoramaForRoom(roomId, media) {
+  if (!state.currentReport) return;
+  const next = {
+    ...state.currentReport,
+    rooms: state.currentReport.rooms.map((room) =>
+      room.roomId === roomId
         ? {
-            ...room,
-            media: room.media.filter((m) => m.id !== mediaId),
+          ...room,
+            media: [...room.media, media],
+            panoramaImage: media.preview || media.url || room.panoramaImage,
+            visuallyDocumented: true,
           }
         : room
     ),
@@ -154,7 +220,7 @@ export function removeRoomMedia(roomId, mediaId) {
   setState({ currentReport: next });
 }
 
-export function quickCaptureCompleteRoom(roomId, media) {
+export function applyRoomConditionToAll(roomId, condition) {
   if (!state.currentReport) return;
   const next = {
     ...state.currentReport,
@@ -162,12 +228,11 @@ export function quickCaptureCompleteRoom(roomId, media) {
       room.roomId === roomId
         ? {
             ...room,
+            overallCondition: condition,
             items: room.items.map((item) => ({
               ...item,
-              condition: item.condition || "good",
+              condition,
             })),
-            overallCondition: room.overallCondition || "good",
-            media: [...room.media, media],
           }
         : room
     ),
@@ -182,8 +247,10 @@ export function validateInventoryReport(report) {
   const missing = source.rooms
     .filter((room) => {
       const hasMedia = room.media.length > 0;
-      const allItemsComplete = room.items.every((item) => ["good", "fair", "poor"].includes(item.condition));
-      return !hasMedia || !allItemsComplete;
+      const allItemsComplete = room.items.every((item) => DETAIL_CONDITIONS.includes(item.condition));
+      const hasQuickCondition = QUICK_CONDITIONS.includes(room.overallCondition);
+      const canSkipDetails = room.visuallyDocumented && hasQuickCondition;
+      return !hasMedia || (!allItemsComplete && !canSkipDetails);
     })
     .map((room) => room.roomId);
 
@@ -194,7 +261,7 @@ export function validateInventoryReport(report) {
 }
 
 export function getRoomCompletion(roomInventory) {
-  const filled = roomInventory.items.filter((item) => ["good", "fair", "poor"].includes(item.condition)).length;
+  const filled = roomInventory.items.filter((item) => DETAIL_CONDITIONS.includes(item.condition)).length;
   const total = roomInventory.items.length || 1;
   const checklistPct = Math.round((filled / total) * 100);
   const mediaPct = roomInventory.media.length > 0 ? 100 : 0;
