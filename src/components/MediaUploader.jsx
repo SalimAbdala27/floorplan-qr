@@ -16,20 +16,46 @@ function loadImageMeta(dataUrl) {
   });
 }
 
+function loadImageElement(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onerror = reject;
+    image.onload = () => resolve(image);
+    image.src = dataUrl;
+  });
+}
+
+function compressDataUrl(image, maxLongEdge, quality = 0.72) {
+  const longestEdge = Math.max(image.width, image.height);
+  const scale = Math.min(1, maxLongEdge / longestEdge);
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
 export default function MediaUploader({ onAddMedia, onQuickCapture }) {
   const handleFile = async (file, quickMode = false) => {
     if (!file) return;
 
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      const meta = await loadImageMeta(dataUrl);
+      const sourceDataUrl = await readFileAsDataUrl(file);
+      const meta = await loadImageMeta(sourceDataUrl);
       const isPano = meta.width > meta.height * 2;
+      const imageEl = await loadImageElement(sourceDataUrl);
+      const compressedDataUrl =
+        compressDataUrl(imageEl, isPano ? 2200 : 1600, isPano ? 0.68 : 0.74) || sourceDataUrl;
 
       const media = {
         id: `media_${Date.now()}`,
         type: isPano ? "pano" : "photo",
-        url: dataUrl,
-        preview: dataUrl,
+        url: compressedDataUrl,
+        preview: compressedDataUrl,
       };
 
       if (quickMode) {

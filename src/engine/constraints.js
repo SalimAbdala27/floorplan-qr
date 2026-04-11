@@ -182,6 +182,23 @@ export function applyConstraints(inputPlan) {
   let sharedBathroomX = null;
 
   bathrooms.forEach(({ room }) => {
+    const roomName = String(room.name || "").toLowerCase();
+    const isDownstairsWc = roomName.includes("downstairs wc") || roomName.includes("ground floor wc");
+    const isUpstairsWc = roomName.includes("upstairs wc");
+
+    if (isDownstairsWc) {
+      moveRoom(plan, room.id, 0);
+      room.floor = 0;
+      room.x = GRID * 2;
+      room.y = GRID * 3;
+      return;
+    }
+
+    if (isUpstairsWc) {
+      moveRoom(plan, room.id, 1);
+      room.floor = 1;
+    }
+
     const sameFloorBedrooms = bedroomsByFloor.get(room.floor) || [];
 
     if (!sameFloorBedrooms.length && bedroomsByFloor.size) {

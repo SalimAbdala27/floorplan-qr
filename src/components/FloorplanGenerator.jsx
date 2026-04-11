@@ -5,7 +5,6 @@ const CANVAS_HEIGHT = 640;
 const ITEM_SAFE_MARGIN = 8;
 const SNAP_DISTANCE = 10;
 const PIXELS_PER_METER = 40;
-const CENTIMETERS_PER_PIXEL = 100 / PIXELS_PER_METER;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -21,25 +20,48 @@ function parseDecimal(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function normalizeAngle(degrees) {
+  let angle = Number.isFinite(Number(degrees)) ? Number(degrees) : 0;
+  while (angle > 180) angle -= 360;
+  while (angle < -180) angle += 360;
+  return Math.round(angle);
+}
+
+function snapCardinalAngle(angle, threshold = 7) {
+  const normalized = normalizeAngle(angle);
+  const candidates = [0, 90, -90, 180, -180];
+  let closest = normalized;
+  let minDelta = Infinity;
+  candidates.forEach((candidate) => {
+    const delta = Math.abs(normalized - candidate);
+    if (delta < minDelta) {
+      minDelta = delta;
+      closest = candidate;
+    }
+  });
+  return minDelta <= threshold ? closest : normalized;
+}
+
 function normalizeItemForCanvas(type, item) {
+  const angled = withAngle(item || {});
   const minSize = getMinSize(type);
   const maxWidth = Math.max(minSize.w, CANVAS_WIDTH - ITEM_SAFE_MARGIN * 2);
   const maxHeight = Math.max(minSize.h, CANVAS_HEIGHT - ITEM_SAFE_MARGIN * 2);
-  const width = clamp(item.w ?? minSize.w, minSize.w, maxWidth);
-  const height = clamp(item.h ?? minSize.h, minSize.h, maxHeight);
+  const width = clamp(angled.w ?? minSize.w, minSize.w, maxWidth);
+  const height = clamp(angled.h ?? minSize.h, minSize.h, maxHeight);
   const x = clamp(
-    item.x ?? ITEM_SAFE_MARGIN,
+    angled.x ?? ITEM_SAFE_MARGIN,
     ITEM_SAFE_MARGIN,
     Math.max(ITEM_SAFE_MARGIN, CANVAS_WIDTH - ITEM_SAFE_MARGIN - width)
   );
   const y = clamp(
-    item.y ?? ITEM_SAFE_MARGIN,
+    angled.y ?? ITEM_SAFE_MARGIN,
     ITEM_SAFE_MARGIN,
     Math.max(ITEM_SAFE_MARGIN, CANVAS_HEIGHT - ITEM_SAFE_MARGIN - height)
   );
 
   return {
-    ...item,
+    ...angled,
     x,
     y,
     w: clamp(width, minSize.w, CANVAS_WIDTH - ITEM_SAFE_MARGIN - x),
@@ -113,6 +135,49 @@ function getMinSize(type) {
   return { w: 22, h: 8 };
 }
 
+function withAngle(item) {
+  return {
+    ...item,
+    angle: Number.isFinite(Number(item?.angle)) ? Number(item.angle) : 0,
+  };
+}
+
+const QUICK_TOOL_GROUPS = [
+  {
+    title: "Kitchen",
+    items: [
+      { label: "Cabinets", w: 88, h: 26 },
+      { label: "Sink", w: 64, h: 26 },
+      { label: "Oven / Hob", w: 72, h: 26 },
+      { label: "Fridge Space", w: 72, h: 26 },
+    ],
+  },
+  {
+    title: "Bathroom",
+    items: [
+      { label: "Toilet", w: 56, h: 24 },
+      { label: "Sink", w: 56, h: 24 },
+      { label: "Bath / Shower", w: 86, h: 26 },
+    ],
+  },
+  {
+    title: "Storage",
+    items: [
+      { label: "Wardrobe", w: 78, h: 26, buttonLabel: "Wardrobes" },
+      { label: "Cupboard", w: 68, h: 24, buttonLabel: "Cupboards" },
+    ],
+  },
+  {
+    title: "Furniture",
+    items: [
+      { label: "Bed", w: 92, h: 42 },
+      { label: "Sofa", w: 88, h: 34 },
+      { label: "Table", w: 78, h: 34 },
+      { label: "Chairs", w: 68, h: 28 },
+    ],
+  },
+];
+
 export default function FloorplanGenerator({
   layout,
   onLayoutChange,
@@ -121,11 +186,16 @@ export default function FloorplanGenerator({
 }) {
   const [selected, setSelected] = useState(null);
   const [dragging, setDragging] = useState(null);
+  const [isFullscreenEditor, setIsFullscreenEditor] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [snapRotation, setSnapRotation] = useState(true);
   const [hasUserAdjustedZoom, setHasUserAdjustedZoom] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
-  const [floorNameDraft, setFloorNameDraft] = useState("");
+  const [isLandscape, setIsLandscape] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth > window.innerHeight;
+  });
 
   const canvasRef = useRef(null);
   const viewportRef = useRef(null);
@@ -143,17 +213,9 @@ export default function FloorplanGenerator({
     return activeFloor[selected.type]?.find((item) => item.id === selected.id) || null;
   }, [activeFloor, selected]);
   const selectedRoomWidthMeters =
-    selected?.type === "rooms" && selectedItem ? Number((selectedItem.w / PIXELS_PER_METER).toFixed(2)) : null;
+    selected?.type === "rooms" && selectedItem ? Number((selectedItem.w / PIXELS_PER_METER).toFixed(2)) : 4;
   const selectedRoomHeightMeters =
-    selected?.type === "rooms" && selectedItem ? Number((selectedItem.h / PIXELS_PER_METER).toFixed(2)) : null;
-  const selectedWindowWidthCm =
-    selected?.type === "windows" && selectedItem
-      ? Math.round(selectedItem.w * CENTIMETERS_PER_PIXEL)
-      : null;
-  const selectedWindowHeightCm =
-    selected?.type === "windows" && selectedItem
-      ? Math.round(selectedItem.h * CENTIMETERS_PER_PIXEL)
-      : null;
+    selected?.type === "rooms" && selectedItem ? Number((selectedItem.h / PIXELS_PER_METER).toFixed(2)) : 3;
   const selectedRoomId =
     selected?.type === "rooms" && selectedItem?.id?.startsWith("layout_")
       ? selectedItem.id.slice("layout_".length)
@@ -186,6 +248,28 @@ export default function FloorplanGenerator({
     });
     observer.observe(viewport);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const clearDrag = () => setDragging(null);
+    window.addEventListener("pointerup", clearDrag);
+    window.addEventListener("touchend", clearDrag);
+    window.addEventListener("touchcancel", clearDrag);
+    return () => {
+      window.removeEventListener("pointerup", clearDrag);
+      window.removeEventListener("touchend", clearDrag);
+      window.removeEventListener("touchcancel", clearDrag);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => setIsLandscape(window.innerWidth > window.innerHeight);
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
   }, []);
 
   const getSnapTargets = (ignoreType, ignoreId) =>
@@ -264,7 +348,6 @@ export default function FloorplanGenerator({
 
   const setActiveFloor = (nextFloorId) => {
     setSelected(null);
-    setFloorNameDraft("");
     commitLayout({
       ...normalizedLayout,
       activeFloorId: nextFloorId,
@@ -295,31 +378,6 @@ export default function FloorplanGenerator({
     setSelected(null);
   };
 
-  const removeCurrentFloor = () => {
-    if (floors.length <= 1) return;
-    const nextFloors = floors.filter((floor) => floor.id !== activeFloor.id);
-    commitLayout({
-      floors: nextFloors,
-      activeFloorId: nextFloors[0].id,
-    });
-    setSelected(null);
-  };
-
-  const saveFloorName = () => {
-    const clean = floorNameDraft.trim();
-    if (!clean) {
-      setFloorNameDraft("");
-      return;
-    }
-
-    updateActiveFloor((floor) => ({
-      ...floor,
-      name: clean,
-    }));
-
-    setFloorNameDraft("");
-  };
-
   const addItem = (type) => {
     const id = type === "rooms" ? `layout_room_${Date.now()}` : `${type}_${Date.now()}`;
 
@@ -331,14 +389,16 @@ export default function FloorplanGenerator({
         y: 36,
         w: 160,
         h: 110,
+        angle: 0,
       },
       doors: {
         id,
         x: 90,
         y: 190,
-        w: 34,
-        h: 8,
+        w: 42,
+        h: 24,
         label: "Door",
+        angle: 0,
       },
       windows: {
         id,
@@ -347,6 +407,7 @@ export default function FloorplanGenerator({
         w: 42,
         h: 8,
         label: "Window",
+        angle: 0,
       },
       spaces: {
         id,
@@ -355,6 +416,7 @@ export default function FloorplanGenerator({
         w: 110,
         h: 40,
         label: "Space",
+        angle: 0,
       },
       stairs: {
         id,
@@ -363,11 +425,26 @@ export default function FloorplanGenerator({
         w: 60,
         h: 60,
         label: "Stairs",
+        angle: 0,
       },
     };
 
     upsertArray(type, (items) => [...items, itemMap[type]]);
     setSelected({ type, id, floorId: activeFloor.id });
+  };
+
+  const addLabeledSpace = (label, width = 90, height = 34) => {
+    const item = normalizeItemForCanvas("spaces", {
+      id: `spaces_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      x: 48,
+      y: 48,
+      w: width,
+      h: height,
+      label,
+      angle: 0,
+    });
+    upsertArray("spaces", (items) => [...items, item]);
+    setSelected({ type: "spaces", id: item.id, floorId: activeFloor.id });
   };
 
   const removeSelected = () => {
@@ -379,8 +456,44 @@ export default function FloorplanGenerator({
   const updateSelected = (patch) => {
     if (!selected) return;
     upsertArray(selected.type, (items) =>
-      items.map((item) => (item.id === selected.id ? { ...item, ...patch } : item))
+      items.map((item) =>
+        item.id === selected.id
+          ? {
+              ...item,
+              ...patch,
+            }
+          : item
+      )
     );
+  };
+
+  const moveSelectedRoomToFloor = (nextFloorId) => {
+    if (selected?.type !== "rooms" || !selectedItem) return;
+    if (!floors.some((floor) => floor.id === nextFloorId)) return;
+
+    const nextFloors = floors.map((floor) => ({
+      ...floor,
+      rooms: (floor.rooms || []).filter((room) => room.id !== selectedItem.id),
+    }));
+
+    const targetIndex = nextFloors.findIndex((floor) => floor.id === nextFloorId);
+    nextFloors[targetIndex] = {
+      ...nextFloors[targetIndex],
+      rooms: [...(nextFloors[targetIndex].rooms || []), normalizeItemForCanvas("rooms", selectedItem)],
+    };
+
+    commitLayout({
+      floors: nextFloors,
+      activeFloorId: nextFloorId,
+    });
+    setSelected({
+      type: "rooms",
+      id: selectedItem.id,
+      floorId: nextFloorId,
+    });
+    if (selectedRoomId && onRoomFloorChange) {
+      onRoomFloorChange(selectedRoomId, nextFloorId);
+    }
   };
 
   const updateItemPosition = (type, id, x, y) => {
@@ -409,69 +522,6 @@ export default function FloorplanGenerator({
           : item
       )
     );
-  };
-
-  const isOverlapping = (a, b) =>
-    !(
-      a.x + a.w <= b.x ||
-      b.x + b.w <= a.x ||
-      a.y + a.h <= b.y ||
-      b.y + b.h <= a.y
-    );
-
-  const moveSelectedRoomToFloor = (nextFloorId) => {
-    if (selected?.type !== "rooms" || !selectedItem) return;
-    const targetFloorExists = floors.some((floor) => floor.id === nextFloorId);
-    if (!targetFloorExists) return;
-
-    const nextFloors = floors.map((floor) => ({
-      ...floor,
-      rooms: (floor.rooms || []).filter((room) => room.id !== selectedItem.id),
-    }));
-
-    const targetIndex = nextFloors.findIndex((floor) => floor.id === nextFloorId);
-    const targetFloor = nextFloors[targetIndex];
-    const occupiedRooms = targetFloor.rooms || [];
-
-    let candidate = normalizeItemForCanvas("rooms", { ...selectedItem });
-    let guard = 0;
-    while (guard < 40) {
-      let hasOverlap = false;
-      for (const room of occupiedRooms) {
-        if (isOverlapping(candidate, room)) {
-          hasOverlap = true;
-          break;
-        }
-      }
-      if (!hasOverlap) break;
-
-      candidate = normalizeItemForCanvas("rooms", {
-        ...candidate,
-        x: candidate.x + 24,
-        y: candidate.y + 24,
-      });
-      guard += 1;
-    }
-
-    nextFloors[targetIndex] = {
-      ...targetFloor,
-      rooms: [...occupiedRooms, candidate],
-    };
-
-    commitLayout({
-      floors: nextFloors,
-      activeFloorId: nextFloorId,
-    });
-
-    setSelected({
-      type: "rooms",
-      id: selectedItem.id,
-      floorId: nextFloorId,
-    });
-
-    if (selectedRoomId && onRoomFloorChange) {
-      onRoomFloorChange(selectedRoomId, nextFloorId);
-    }
   };
 
   const getCanvasPoint = (event) => {
@@ -545,6 +595,25 @@ export default function FloorplanGenerator({
         dragging.itemHeight
       );
       updateItemPosition(dragging.type, dragging.id, snapped.x, snapped.y);
+      return;
+    }
+
+    if (dragging.mode === "rotate") {
+      const currentPointerAngle = Math.atan2(point.y - dragging.centerY, point.x - dragging.centerX);
+      const deltaRadians = currentPointerAngle - dragging.startPointerAngle;
+      const deltaDegrees = (deltaRadians * 180) / Math.PI;
+      const rawAngle = normalizeAngle((dragging.startItemAngle || 0) + deltaDegrees);
+      const nextAngle = snapRotation ? snapCardinalAngle(rawAngle) : rawAngle;
+      upsertArray(dragging.type, (items) =>
+        items.map((item) =>
+          item.id === dragging.id
+            ? {
+                ...item,
+                angle: nextAngle,
+              }
+            : item
+        )
+      );
       return;
     }
 
@@ -624,15 +693,15 @@ export default function FloorplanGenerator({
     }
   };
 
-  const adjustSelectedSize = (deltaW, deltaH) => {
-    if (!selectedItem || !selected) return;
-    const minSize = getMinSize(selected.type);
-    const nextW = clamp(selectedItem.w + deltaW, minSize.w, CANVAS_WIDTH - selectedItem.x);
-    const nextH = clamp(selectedItem.h + deltaH, minSize.h, CANVAS_HEIGHT - selectedItem.y);
-    updateSelected({ w: nextW, h: nextH });
-  };
-
   const selectedStyle = "ring-2 ring-emerald-500";
+  const getItemStyle = (item) => ({
+    left: item.x,
+    top: item.y,
+    width: item.w,
+    height: item.h,
+    transform: `rotate(${item.angle || 0}deg)`,
+    transformOrigin: "center center",
+  });
 
   const renderResizeHandle = (type, item) =>
     selected?.floorId === activeFloor.id && selected?.type === type && selected?.id === item.id ? (
@@ -642,21 +711,143 @@ export default function FloorplanGenerator({
       />
     ) : null;
 
+  const startRotateDrag = (event, type, item) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = getCanvasPoint(event);
+    if (!point) return;
+    const centerX = item.x + item.w / 2;
+    const centerY = item.y + item.h / 2;
+    const startPointerAngle = Math.atan2(point.y - centerY, point.x - centerX);
+    setSelected({ type, id: item.id, floorId: activeFloor.id });
+    setDragging({
+      mode: "rotate",
+      type,
+      id: item.id,
+      centerX,
+      centerY,
+      startPointerAngle,
+      startItemAngle: item.angle || 0,
+    });
+  };
+
+  const renderRotateHandle = (type, item) =>
+    selected?.floorId === activeFloor.id && selected?.type === type && selected?.id === item.id ? (
+      <span
+        onPointerDown={(event) => startRotateDrag(event, type, item)}
+        className="absolute -top-5 left-1/2 h-4 w-4 -translate-x-1/2 cursor-grab rounded-full border border-blue-700 bg-blue-500"
+      />
+    ) : null;
+
+  const renderSpaceSymbol = (item) => {
+    const label = String(item.label || "").toLowerCase();
+
+    if (label.includes("bed")) {
+      return (
+        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
+          <rect x="10" y="10" width="100" height="40" fill="#fff" stroke="#333" strokeWidth="2" />
+          <rect x="14" y="14" width="26" height="14" fill="#f4f4f5" stroke="#555" strokeWidth="1.2" />
+        </svg>
+      );
+    }
+    if (label.includes("sofa")) {
+      return (
+        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
+          <rect x="18" y="20" width="84" height="24" rx="3" fill="#fff" stroke="#333" strokeWidth="2" />
+          <rect x="10" y="22" width="10" height="20" fill="#fff" stroke="#333" strokeWidth="2" />
+          <rect x="100" y="22" width="10" height="20" fill="#fff" stroke="#333" strokeWidth="2" />
+        </svg>
+      );
+    }
+    if (label.includes("table")) {
+      return (
+        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
+          <rect x="26" y="12" width="68" height="36" fill="#fff" stroke="#333" strokeWidth="2" />
+        </svg>
+      );
+    }
+    if (label.includes("chair")) {
+      return (
+        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
+          <rect x="42" y="18" width="36" height="24" fill="#fff" stroke="#333" strokeWidth="2" />
+          <line x1="46" y1="42" x2="46" y2="52" stroke="#333" strokeWidth="2" />
+          <line x1="74" y1="42" x2="74" y2="52" stroke="#333" strokeWidth="2" />
+        </svg>
+      );
+    }
+    if (label.includes("toilet")) {
+      return (
+        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
+          <rect x="44" y="8" width="32" height="16" fill="#fff" stroke="#333" strokeWidth="2" />
+          <ellipse cx="60" cy="38" rx="20" ry="14" fill="#fff" stroke="#333" strokeWidth="2" />
+        </svg>
+      );
+    }
+    if (label.includes("bath") || label.includes("shower")) {
+      return (
+        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
+          <rect x="12" y="12" width="96" height="36" rx="8" fill="#fff" stroke="#333" strokeWidth="2" />
+        </svg>
+      );
+    }
+    if (label.includes("sink")) {
+      return (
+        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
+          <rect x="34" y="12" width="52" height="36" fill="#fff" stroke="#333" strokeWidth="2" />
+          <circle cx="60" cy="30" r="8" fill="none" stroke="#333" strokeWidth="1.4" />
+        </svg>
+      );
+    }
+    if (label.includes("cabinet") || label.includes("wardrobe") || label.includes("cupboard")) {
+      return (
+        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
+          <rect x="10" y="10" width="100" height="40" fill="#fff" stroke="#333" strokeWidth="2" />
+          <line x1="60" y1="10" x2="60" y2="50" stroke="#333" strokeWidth="1.2" />
+        </svg>
+      );
+    }
+    if (label.includes("oven") || label.includes("hob")) {
+      return (
+        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
+          <rect x="20" y="10" width="80" height="40" fill="#fff" stroke="#333" strokeWidth="2" />
+          <circle cx="46" cy="24" r="4" fill="none" stroke="#333" strokeWidth="1.2" />
+          <circle cx="74" cy="24" r="4" fill="none" stroke="#333" strokeWidth="1.2" />
+          <rect x="40" y="32" width="40" height="12" fill="none" stroke="#333" strokeWidth="1.2" />
+        </svg>
+      );
+    }
+    if (label.includes("fridge")) {
+      return (
+        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
+          <rect x="38" y="8" width="44" height="44" fill="#fff" stroke="#333" strokeWidth="2" />
+          <line x1="38" y1="30" x2="82" y2="30" stroke="#333" strokeWidth="1.2" />
+        </svg>
+      );
+    }
+    return null;
+  };
+
+  const hasSpaceSymbol = (item) => Boolean(renderSpaceSymbol(item));
+
   const renderRoom = (room) => (
     <button
       key={room.id}
       type="button"
       onClick={() => setSelected({ type: "rooms", id: room.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "rooms", room)}
-      className={`absolute box-border rounded-[4px] border-[5px] border-black bg-white px-1 text-center text-[10px] font-semibold text-zinc-800 shadow-sm transition ${
+      className={`absolute box-border rounded-[2px] border-[4px] border-black bg-white px-1 text-center text-[10px] font-semibold text-zinc-800 transition ${
         selected?.floorId === activeFloor.id && selected?.type === "rooms" && selected?.id === room.id
           ? selectedStyle
           : ""
       }`}
-      style={{ left: room.x, top: room.y, width: room.w, height: room.h }}
+      style={getItemStyle(room)}
     >
       <span className="block truncate">{room.name}</span>
+      <span className="block text-[9px] font-medium text-zinc-500">
+        {Number((room.w / PIXELS_PER_METER).toFixed(1))}m x {Number((room.h / PIXELS_PER_METER).toFixed(1))}m
+      </span>
       {renderResizeHandle("rooms", room)}
+      {renderRotateHandle("rooms", room)}
     </button>
   );
 
@@ -666,16 +857,54 @@ export default function FloorplanGenerator({
       type="button"
       onClick={() => setSelected({ type: "doors", id: door.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "doors", door)}
-      className={`absolute box-border rounded-none border-t-[3px] border-black bg-amber-100 ${
+      className={`absolute box-border rounded-none bg-transparent ${
         selected?.floorId === activeFloor.id && selected?.type === "doors" && selected?.id === door.id
           ? selectedStyle
           : ""
       }`}
-      style={{ left: door.x, top: door.y, width: door.w, height: door.h }}
+      style={getItemStyle(door)}
       title={door.label || "Door"}
     >
-      <span className="absolute -top-2 left-1/2 h-4 w-4 -translate-x-1/2 rounded-full border border-black border-t-0 bg-transparent" />
+      <svg
+        viewBox={`0 0 ${Math.max(door.w, 24)} ${Math.max(door.h, 20)}`}
+        className="pointer-events-none h-full w-full"
+      >
+        <rect
+          x="1"
+          y={Math.max(door.h, 20) - 5}
+          width={Math.max(door.w, 24) - 2}
+          height="6"
+          fill="#fff"
+        />
+        <line
+          x1="2"
+          y1={Math.max(door.h, 20) - 2}
+          x2={Math.max(door.w, 24) - 2}
+          y2={Math.max(door.h, 20) - 2}
+          stroke="#111"
+          strokeWidth="1.2"
+        />
+        <line
+          x1="2"
+          y1={Math.max(door.h, 20) - 2}
+          x2={Math.max(door.w, 24) - 2}
+          y2="4"
+          stroke="#222"
+          strokeWidth="1.4"
+        />
+        <path
+          d={`M 2 ${Math.max(door.h, 20) - 2} A ${Math.max(door.w, 24) - 4} ${Math.max(
+            door.h,
+            20
+          ) - 6} 0 0 1 ${Math.max(door.w, 24) - 2} 4`}
+          fill="none"
+          stroke="#666"
+          strokeDasharray="2 2"
+          strokeWidth="1.2"
+        />
+      </svg>
       {renderResizeHandle("doors", door)}
+      {renderRotateHandle("doors", door)}
     </button>
   );
 
@@ -687,17 +916,20 @@ export default function FloorplanGenerator({
         setSelected({ type: "windows", id: windowItem.id, floorId: activeFloor.id })
       }
       onPointerDown={(event) => startMoveDrag(event, "windows", windowItem)}
-      className={`absolute box-border rounded-sm border-[2px] border-sky-700 bg-sky-100 ${
+      className={`absolute box-border rounded-[1px] border-[3px] border-black bg-white ${
         selected?.floorId === activeFloor.id &&
         selected?.type === "windows" &&
         selected?.id === windowItem.id
           ? selectedStyle
           : ""
       }`}
-      style={{ left: windowItem.x, top: windowItem.y, width: windowItem.w, height: windowItem.h }}
+      style={getItemStyle(windowItem)}
       title={windowItem.label || "Window"}
     >
+      <span className="pointer-events-none absolute inset-y-[1px] left-[33%] w-px bg-black" />
+      <span className="pointer-events-none absolute inset-y-[1px] left-[66%] w-px bg-black" />
       {renderResizeHandle("windows", windowItem)}
+      {renderRotateHandle("windows", windowItem)}
     </button>
   );
 
@@ -707,15 +939,23 @@ export default function FloorplanGenerator({
       type="button"
       onClick={() => setSelected({ type: "spaces", id: item.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "spaces", item)}
-      className={`absolute box-border rounded border border-dashed border-zinc-500 bg-zinc-100/80 text-[10px] font-semibold text-zinc-700 ${
+      className={`absolute box-border rounded ${
+        hasSpaceSymbol(item)
+          ? "border-2 border-zinc-700 bg-white"
+          : "border border-dashed border-zinc-500 bg-zinc-100/80"
+      } text-[10px] font-semibold text-zinc-700 ${
         selected?.floorId === activeFloor.id && selected?.type === "spaces" && selected?.id === item.id
           ? selectedStyle
           : ""
       }`}
-      style={{ left: item.x, top: item.y, width: item.w, height: item.h }}
+      style={getItemStyle(item)}
     >
-      <span className="block truncate px-1">{item.label || "Space"}</span>
+      {renderSpaceSymbol(item)}
+      <span className="absolute bottom-0.5 left-0 right-0 block truncate px-1 text-center">
+        {item.label || "Space"}
+      </span>
       {renderResizeHandle("spaces", item)}
+      {renderRotateHandle("spaces", item)}
     </button>
   );
 
@@ -730,135 +970,56 @@ export default function FloorplanGenerator({
           ? selectedStyle
           : ""
       }`}
-      style={{ left: item.x, top: item.y, width: item.w, height: item.h }}
+      style={getItemStyle(item)}
       title={item.label || "Stairs"}
     >
       <span className="block truncate px-1">{item.label || "Stairs"}</span>
       {renderResizeHandle("stairs", item)}
+      {renderRotateHandle("stairs", item)}
     </button>
   );
 
-  return (
-    <div className="space-y-3">
-      <div className="rounded-xl border border-zinc-200 bg-white p-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Floors</p>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={addFloor}
-              className="h-8 rounded-lg bg-zinc-800 px-2.5 text-[11px] font-semibold text-white"
-            >
-              Add Floor
-            </button>
-            <button
-              type="button"
-              onClick={removeCurrentFloor}
-              disabled={floors.length <= 1}
-              className="h-8 rounded-lg bg-red-100 px-2.5 text-[11px] font-semibold text-red-700 disabled:opacity-40"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-          {floors.map((floor) => (
-            <button
-              key={floor.id}
-              type="button"
-              onClick={() => setActiveFloor(floor.id)}
-              className={`h-8 shrink-0 rounded-lg px-3 text-[11px] font-semibold ${
-                floor.id === activeFloor.id ? "bg-zinc-800 text-white" : "bg-zinc-200 text-zinc-700"
-              }`}
-            >
-              {floor.name}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-2 flex items-center gap-2">
-          <input
-            value={floorNameDraft}
-            onChange={(event) => setFloorNameDraft(event.target.value)}
-            placeholder={`Rename ${activeFloor.name}`}
-            className="h-9 flex-1 rounded-lg border border-zinc-300 px-2 text-xs"
-          />
-          <button
-            type="button"
-            onClick={saveFloorName}
-            className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700"
+  const renderDrawingCanvas = ({ preview = false, className = "" } = {}) => {
+    const scale = preview ? Math.min(0.74, effectiveZoom) : effectiveZoom;
+    return (
+      <div
+        ref={preview ? undefined : viewportRef}
+        className={`overflow-hidden rounded-lg border border-zinc-300 bg-white ${className}`}
+      >
+        <div className="h-full w-full bg-zinc-50">
+          <div
+            style={{
+              width: CANVAS_WIDTH * scale,
+              height: CANVAS_HEIGHT * scale,
+              margin: "0 auto",
+            }}
           >
-            Save
-          </button>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-zinc-200 bg-white p-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Tools</p>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => addItem("rooms")} className="h-9 rounded-lg bg-zinc-800 text-xs font-semibold text-white">Add Room</button>
-          <button type="button" onClick={() => addItem("doors")} className="h-9 rounded-lg bg-zinc-200 text-xs font-semibold text-zinc-700">Add Door</button>
-          <button type="button" onClick={() => addItem("windows")} className="h-9 rounded-lg bg-zinc-200 text-xs font-semibold text-zinc-700">Add Window</button>
-          <button type="button" onClick={() => addItem("spaces")} className="h-9 rounded-lg bg-zinc-200 text-xs font-semibold text-zinc-700">Add Space</button>
-          <button type="button" onClick={() => addItem("stairs")} className="h-9 rounded-lg bg-zinc-200 text-xs font-semibold text-zinc-700">Add Stairs</button>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-zinc-200 bg-white p-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Drawing</p>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                setHasUserAdjustedZoom(true);
-                setZoom((prev) => clamp(Number((prev - 0.05).toFixed(2)), minZoom, maxZoom));
-              }}
-              className="h-8 w-8 rounded-lg bg-zinc-200 text-sm font-bold text-zinc-700"
-            >
-              -
-            </button>
-            <span className="min-w-[52px] text-center text-[11px] font-semibold text-zinc-600">
-              {Math.round(zoom * 100)}%
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setHasUserAdjustedZoom(true);
-                setZoom((prev) => clamp(Number((prev + 0.05).toFixed(2)), minZoom, maxZoom));
-              }}
-              className="h-8 w-8 rounded-lg bg-zinc-200 text-sm font-bold text-zinc-700"
-            >
-              +
-            </button>
-          </div>
-        </div>
-        <p className="mt-1 text-[11px] text-zinc-500">Drag items freely. Boxes snap when close. Drag green corner to resize.</p>
-
-        <div
-          ref={viewportRef}
-          className="mt-2 h-[520px] md:h-[640px] overflow-hidden rounded-lg border border-zinc-300 bg-white"
-        >
-          <div className="h-full w-full bg-zinc-50">
             <div
+              ref={preview ? undefined : canvasRef}
+              onPointerDown={
+                preview
+                  ? undefined
+                  : (event) => {
+                      if (event.target === event.currentTarget) {
+                        setSelected(null);
+                        setDragging(null);
+                      }
+                    }
+              }
+              onPointerMove={preview ? undefined : onCanvasPointerMove}
+              onPointerUp={preview ? undefined : stopDrag}
+              onPointerCancel={preview ? undefined : stopDrag}
+              onPointerLeave={preview ? undefined : stopDrag}
+              onTouchStart={preview ? undefined : onCanvasTouchStart}
+              onTouchMove={preview ? undefined : onCanvasTouchMove}
+              onTouchEnd={preview ? undefined : onCanvasTouchEnd}
+              className={`relative origin-top-left bg-zinc-50 ${preview ? "pointer-events-none" : ""}`}
               style={{
-                width: CANVAS_WIDTH * effectiveZoom,
-                height: CANVAS_HEIGHT * effectiveZoom,
-                margin: "0 auto",
+                width: CANVAS_WIDTH,
+                height: CANVAS_HEIGHT,
+                transform: `scale(${scale})`,
+                touchAction: preview ? "auto" : dragging ? "none" : "pan-y pinch-zoom",
               }}
-            >
-            <div
-              ref={canvasRef}
-              onPointerMove={onCanvasPointerMove}
-              onPointerUp={stopDrag}
-              onPointerCancel={stopDrag}
-              onPointerLeave={stopDrag}
-              onTouchStart={onCanvasTouchStart}
-              onTouchMove={onCanvasTouchMove}
-              onTouchEnd={onCanvasTouchEnd}
-              className="relative origin-top-left bg-zinc-50 touch-none"
-              style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${effectiveZoom})` }}
             >
               {(activeFloor.rooms || []).map(renderRoom)}
               {(activeFloor.doors || []).map(renderDoor)}
@@ -866,201 +1027,238 @@ export default function FloorplanGenerator({
               {(activeFloor.spaces || []).map(renderSpace)}
               {(activeFloor.stairs || []).map(renderStairs)}
             </div>
-            </div>
           </div>
         </div>
       </div>
+    );
+  };
 
+  if (!isFullscreenEditor) {
+    return (
       <div className="rounded-xl border border-zinc-200 bg-white p-3">
-        <div className="flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Properties</p>
-          <button type="button" onClick={removeSelected} disabled={!selectedItem} className="h-8 rounded-lg bg-red-100 px-2.5 text-[11px] font-semibold text-red-700 disabled:opacity-50">Delete</button>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+              Floorplan Preview
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">
+              Open fullscreen to edit rooms, tools, and symbols.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsFullscreenEditor(true)}
+            className="h-10 rounded-lg bg-zinc-800 px-3 text-xs font-semibold text-white"
+          >
+            Open Fullscreen
+          </button>
+        </div>
+        {renderDrawingCanvas({ preview: true, className: "mt-2 h-[320px]" })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-white">
+      <div className="flex h-full flex-col">
+        <div className="border-b border-zinc-200 bg-white px-2 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 gap-1 overflow-x-auto">
+              {floors.map((floor) => (
+                <button
+                  key={floor.id}
+                  type="button"
+                  onClick={() => setActiveFloor(floor.id)}
+                  className={`h-8 shrink-0 rounded-lg px-2.5 text-[11px] font-semibold ${
+                    floor.id === activeFloor.id ? "bg-zinc-800 text-white" : "bg-zinc-200 text-zinc-700"
+                  }`}
+                >
+                  {floor.name}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={addFloor}
+                className="h-8 shrink-0 rounded-lg bg-zinc-200 px-2.5 text-[11px] font-semibold text-zinc-700"
+              >
+                + Floor
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsFullscreenEditor(false)}
+              className="h-8 shrink-0 rounded-lg bg-zinc-800 px-3 text-xs font-semibold text-white"
+            >
+              Done
+            </button>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <p className="truncate text-[11px] text-zinc-500">
+              Drag to move. Green handle resizes. Blue handle rotates.
+            </p>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setHasUserAdjustedZoom(true);
+                  setZoom((prev) => clamp(Number((prev - 0.05).toFixed(2)), minZoom, maxZoom));
+                }}
+                className="h-8 w-8 rounded-lg bg-zinc-200 text-sm font-bold text-zinc-700"
+              >
+                -
+              </button>
+              <span className="min-w-[44px] text-center text-[11px] font-semibold text-zinc-600">
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setHasUserAdjustedZoom(true);
+                  setZoom((prev) => clamp(Number((prev + 0.05).toFixed(2)), minZoom, maxZoom));
+                }}
+                className="h-8 w-8 rounded-lg bg-zinc-200 text-sm font-bold text-zinc-700"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={() => setSnapRotation((prev) => !prev)}
+                className={`h-8 rounded-lg px-2.5 text-[11px] font-semibold ${
+                  snapRotation ? "bg-zinc-800 text-white" : "bg-zinc-200 text-zinc-700"
+                }`}
+              >
+                Snap {snapRotation ? "ON" : "OFF"}
+              </button>
+            </div>
+          </div>
         </div>
 
-        {selectedItem ? (
-          <div className="mt-2 space-y-2">
-            <label className="block text-[10px] text-zinc-500">
-              Label / Name
+        <div className="relative flex-1 overflow-hidden bg-neutral-100">
+          <div className={`h-full p-2 ${isLandscape ? "pr-[84px]" : "pb-[112px]"}`}>
+            {renderDrawingCanvas({ className: "h-full" })}
+          </div>
+
+          <div
+            className={
+              isLandscape
+                ? "absolute inset-y-0 right-0 w-[84px] border-l border-zinc-200 bg-white p-1.5 overflow-y-auto"
+                : "absolute inset-x-0 bottom-0 h-[112px] border-t border-zinc-200 bg-white p-1.5 overflow-x-auto"
+            }
+          >
+            <div className={isLandscape ? "space-y-1.5" : "flex h-full items-start gap-1.5"}>
+              <button type="button" onClick={() => addItem("rooms")} className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg bg-zinc-800 px-1 py-2 text-[10px] font-semibold text-white`}>Room</button>
+              <button type="button" onClick={() => addItem("doors")} className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg border border-zinc-200 bg-zinc-50 px-1 py-2 text-[10px] font-semibold text-zinc-700`}>Door</button>
+              <button type="button" onClick={() => addItem("windows")} className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg border border-zinc-200 bg-zinc-50 px-1 py-2 text-[10px] font-semibold text-zinc-700`}>Window</button>
+              <button type="button" onClick={() => addItem("stairs")} className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg border border-zinc-200 bg-zinc-50 px-1 py-2 text-[10px] font-semibold text-zinc-700`}>Stairs</button>
+              {QUICK_TOOL_GROUPS.flatMap((group) =>
+                group.items.map((item) => (
+                  <button
+                    key={`rail-${group.title}-${item.label}`}
+                    type="button"
+                    onClick={() => addLabeledSpace(item.label, item.w, item.h)}
+                    className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg border border-zinc-200 bg-white px-1 py-2 text-[10px] font-semibold text-zinc-700`}
+                  >
+                    {item.buttonLabel || item.label}
+                  </button>
+                ))
+              )}
+              <button
+                type="button"
+                onClick={removeSelected}
+                disabled={!selectedItem}
+                className={`${isLandscape ? "w-full" : "w-[72px] shrink-0"} rounded-lg bg-red-100 px-1 py-2 text-[10px] font-semibold text-red-700 disabled:opacity-50`}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+
+          {selectedItem ? (
+            <div className="absolute left-2 top-2 w-56 rounded-lg border border-zinc-200 bg-white/95 p-2 shadow-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-600">Properties</p>
               <input
                 value={selectedItem.name || selectedItem.label || ""}
                 onChange={(event) =>
                   updateSelected(
-                    selected.type === "rooms" ? { name: event.target.value } : { label: event.target.value }
+                    selected?.type === "rooms" ? { name: event.target.value } : { label: event.target.value }
                   )
                 }
-                className="mt-1 h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
-                list={selected.type === "rooms" ? "room-name-options" : undefined}
+                className="mt-2 h-8 w-full rounded-lg border border-zinc-300 px-2 text-xs"
               />
-              {selected.type === "rooms" ? (
-                <datalist id="room-name-options">
-                  {availableRooms.map((roomName) => (
-                    <option key={roomName} value={roomName} />
-                  ))}
-                </datalist>
-              ) : null}
-            </label>
 
-            {selected.type !== "rooms" ? (
-              <div className="grid grid-cols-2 gap-2">
-                {["x", "y", "w", "h"].map((key) => (
-                  <label key={key} className="block text-[10px] text-zinc-500 uppercase">
-                    {key}
-                    <input
-                      type="number"
-                      value={selectedItem[key]}
-                      onChange={(event) =>
-                        updateSelected({
-                          [key]: clamp(parseNumber(event.target.value, selectedItem[key]), 0, 800),
-                        })
-                      }
-                      className="mt-1 h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
-                    />
-                  </label>
-                ))}
-              </div>
-            ) : null}
-
-            {selected.type === "rooms" ? (
-              <div className="space-y-2">
-                <label className="block text-[10px] text-zinc-500">
-                  Floor
+              {selected?.type === "rooms" ? (
+                <>
                   <select
-                    value={selected?.floorId || activeFloor.id}
+                    value={selected.floorId || activeFloor.id}
                     onChange={(event) => moveSelectedRoomToFloor(event.target.value)}
-                    className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs"
+                    className="mt-2 h-8 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs"
                   >
                     {floors.map((floor) => (
-                      <option key={`properties-floor-${floor.id}`} value={floor.id}>
+                      <option key={`fs-floor-${floor.id}`} value={floor.id}>
                         {floor.name}
                       </option>
                     ))}
                   </select>
-                </label>
-
-                <div className="grid grid-cols-2 gap-2">
-                <label className="block text-[10px] text-zinc-500">
-                  Room Width (m)
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="1"
-                    max="20"
-                    value={selectedRoomWidthMeters ?? 4}
-                    onChange={(event) =>
-                      updateSelected({
-                        w: clamp(
-                          Math.round(parseDecimal(event.target.value, selectedRoomWidthMeters || 4) * PIXELS_PER_METER),
-                          40,
-                          800
-                        ),
-                      })
-                    }
-                    className="mt-1 h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
-                  />
-                </label>
-                <label className="block text-[10px] text-zinc-500">
-                  Room Height (m)
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="1"
-                    max="20"
-                    value={selectedRoomHeightMeters ?? 3}
-                    onChange={(event) =>
-                      updateSelected({
-                        h: clamp(
-                          Math.round(parseDecimal(event.target.value, selectedRoomHeightMeters || 3) * PIXELS_PER_METER),
-                          40,
-                          800
-                        ),
-                      })
-                    }
-                    className="mt-1 h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
-                  />
-                </label>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      max="20"
+                      value={selectedRoomWidthMeters}
+                      onChange={(event) =>
+                        updateSelected({
+                          w: clamp(
+                            Math.round(parseDecimal(event.target.value, selectedRoomWidthMeters) * PIXELS_PER_METER),
+                            40,
+                            800
+                          ),
+                        })
+                      }
+                      className="h-8 rounded-lg border border-zinc-300 px-2 text-xs"
+                    />
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      max="20"
+                      value={selectedRoomHeightMeters}
+                      onChange={(event) =>
+                        updateSelected({
+                          h: clamp(
+                            Math.round(parseDecimal(event.target.value, selectedRoomHeightMeters) * PIXELS_PER_METER),
+                            40,
+                            800
+                          ),
+                        })
+                      }
+                      className="h-8 rounded-lg border border-zinc-300 px-2 text-xs"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="mt-2 grid grid-cols-3 gap-1">
+                  {["w", "h", "angle"].map((key) => (
+                    <input
+                      key={`prop-${key}`}
+                      type="number"
+                      value={selectedItem[key] ?? 0}
+                      onChange={(event) =>
+                        updateSelected({
+                          [key]:
+                            key === "angle"
+                              ? clamp(parseNumber(event.target.value, selectedItem[key] ?? 0), -180, 180)
+                              : clamp(parseNumber(event.target.value, selectedItem[key] ?? 0), 4, 800),
+                        })
+                      }
+                      className="h-8 rounded-lg border border-zinc-300 px-1.5 text-xs"
+                    />
+                  ))}
                 </div>
-              </div>
-            ) : null}
-
-            {selected.type === "windows" ? (
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block text-[10px] text-zinc-500">
-                  Window Width (cm)
-                  <input
-                    type="number"
-                    min="20"
-                    max="400"
-                    value={selectedWindowWidthCm ?? 100}
-                    onChange={(event) =>
-                      updateSelected({
-                        w: clamp(
-                          Math.round(parseDecimal(event.target.value, selectedWindowWidthCm || 100) / CENTIMETERS_PER_PIXEL),
-                          8,
-                          500
-                        ),
-                      })
-                    }
-                    className="mt-1 h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
-                  />
-                </label>
-                <label className="block text-[10px] text-zinc-500">
-                  Window Height (cm)
-                  <input
-                    type="number"
-                    min="10"
-                    max="120"
-                    value={selectedWindowHeightCm ?? 20}
-                    onChange={(event) =>
-                      updateSelected({
-                        h: clamp(
-                          Math.round(parseDecimal(event.target.value, selectedWindowHeightCm || 20) / CENTIMETERS_PER_PIXEL),
-                          4,
-                          120
-                        ),
-                      })
-                    }
-                    className="mt-1 h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
-                  />
-                </label>
-              </div>
-            ) : null}
-
-            {selected.type !== "rooms" ? (
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => adjustSelectedSize(-10, 0)}
-                  className="h-8 rounded-lg bg-zinc-200 text-[11px] font-semibold text-zinc-700"
-                >
-                  Width -
-                </button>
-                <button
-                  type="button"
-                  onClick={() => adjustSelectedSize(10, 0)}
-                  className="h-8 rounded-lg bg-zinc-200 text-[11px] font-semibold text-zinc-700"
-                >
-                  Width +
-                </button>
-                <button
-                  type="button"
-                  onClick={() => adjustSelectedSize(0, -10)}
-                  className="h-8 rounded-lg bg-zinc-200 text-[11px] font-semibold text-zinc-700"
-                >
-                  Height -
-                </button>
-                <button
-                  type="button"
-                  onClick={() => adjustSelectedSize(0, 10)}
-                  className="h-8 rounded-lg bg-zinc-200 text-[11px] font-semibold text-zinc-700"
-                >
-                  Height +
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <p className="mt-2 text-xs text-zinc-500">Tap an item in the drawing to edit it.</p>
-        )}
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

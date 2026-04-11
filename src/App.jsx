@@ -28,6 +28,16 @@ function pixelsToMeters(pixels, fallback) {
   return Number((numeric / FLOORPLAN_PIXELS_PER_METER).toFixed(2));
 }
 
+function hexToRgb(hex, fallback = [31, 41, 55]) {
+  const value = String(hex || "").replace("#", "").trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(value)) return fallback;
+  return [
+    Number.parseInt(value.slice(0, 2), 16),
+    Number.parseInt(value.slice(2, 4), 16),
+    Number.parseInt(value.slice(4, 6), 16),
+  ];
+}
+
 const HOME_PRESETS = [
   {
     key: "studio_flat",
@@ -214,6 +224,16 @@ function getPresetByKey(key) {
   return HOME_PRESETS.find((preset) => preset.key === key) || HOME_PRESETS[0];
 }
 
+function isSingleFloorPresetKey(presetKey) {
+  return String(presetKey).startsWith("flat_") ||
+    String(presetKey) === "studio_flat" ||
+    String(presetKey).startsWith("bungalow_");
+}
+
+function isHousePresetKey(presetKey) {
+  return String(presetKey).startsWith("house_") || String(presetKey).startsWith("townhouse_");
+}
+
 function inferFloorIdFromRoomName(name) {
   const value = String(name || "").toLowerCase();
   if (value.includes("second floor") || value.includes("2nd floor")) return "floor_3";
@@ -237,15 +257,88 @@ function getDefaultFloorNameById(floorId) {
 
 function buildRoomsFromPreset(presetKey) {
   const preset = getPresetByKey(presetKey);
-  return preset.roomNames.map((name, index) => ({
+  let names = [...preset.roomNames];
+
+  if (isSingleFloorPresetKey(presetKey)) {
+    names = names.filter((name) => {
+      const value = String(name).toLowerCase();
+      return !value.includes("landing") && !value.includes("stairs");
+    });
+  }
+
+  if (isHousePresetKey(presetKey)) {
+    if (!names.some((name) => String(name).toLowerCase().includes("entrance"))) {
+      names.unshift("Entrance");
+    }
+    if (!names.some((name) => String(name).toLowerCase().includes("stairs"))) {
+      const entranceIndex = names.findIndex((name) => String(name).toLowerCase().includes("entrance"));
+      names.splice(Math.max(entranceIndex + 1, 1), 0, "Stairs");
+    }
+    if (!names.some((name) => String(name).toLowerCase().includes("downstairs wc"))) {
+      const kitchenIndex = names.findIndex((name) => String(name).toLowerCase().includes("kitchen"));
+      names.splice(Math.max(kitchenIndex + 1, 1), 0, "Downstairs WC");
+    }
+    if (
+      !names.some(
+        (name) =>
+          String(name).toLowerCase().includes("bathroom") ||
+          String(name).toLowerCase().includes("upstairs wc")
+      )
+    ) {
+      names.push("Bathroom");
+    }
+
+    const bedroomCount = names.filter((name) => String(name).toLowerCase().includes("bedroom")).length;
+    if (bedroomCount > 3 && !names.some((name) => String(name).toLowerCase().includes("upstairs wc"))) {
+      const upstairsLandingIndex = names.findIndex((name) => String(name).toLowerCase().includes("landing"));
+      if (upstairsLandingIndex >= 0) {
+        names.splice(upstairsLandingIndex + 1, 0, "Upstairs WC");
+      } else {
+        names.push("Upstairs WC");
+      }
+    }
+  }
+
+  return names.map((name, index) => {
+    const lower = String(name).toLowerCase();
+    let floorId = inferFloorIdFromRoomName(name);
+
+    if (isSingleFloorPresetKey(presetKey)) {
+      floorId = "floor_1";
+    } else if (isHousePresetKey(presetKey)) {
+      if (
+        lower.includes("entrance") ||
+        lower.includes("kitchen") ||
+        lower.includes("living") ||
+        lower.includes("dining") ||
+        lower.includes("utility") ||
+        lower.includes("stairs") ||
+        lower.includes("downstairs wc") ||
+        lower.includes("ground floor")
+      ) {
+        floorId = "floor_1";
+      } else if (
+        lower.includes("bed") ||
+        lower.includes("bathroom") ||
+        lower.includes("upstairs wc") ||
+        lower.includes("upstairs") ||
+        lower.includes("first floor") ||
+        lower.includes("landing")
+      ) {
+        floorId = "floor_2";
+      }
+    }
+
+    return {
     id: `room_${slugify(name)}_${index + 1}`,
     name,
-    floorId: inferFloorIdFromRoomName(name),
+    floorId,
     widthMeters: 4,
     heightMeters: 3,
     lightsFuseId: null,
     socketsFuseId: null,
-  }));
+    };
+  });
 }
 
 function buildBooleanMapFromRooms(rooms, defaultValue = false) {
@@ -256,7 +349,7 @@ function buildBooleanMapFromRooms(rooms, defaultValue = false) {
   return map;
 }
 
-function buildLayoutFromRooms(rooms) {
+function buildLayoutFromRooms(rooms, presetKey = "") {
   const groupedRooms = rooms.reduce((acc, room) => {
     const floorId = room.floorId || "floor_1";
     if (!acc[floorId]) acc[floorId] = [];
@@ -271,7 +364,7 @@ function buildLayoutFromRooms(rooms) {
     return aNum - bNum;
   });
 
-  return {
+  const layout = {
     floors: orderedFloorIds.map((floorId) => ({
       id: floorId,
       name: getDefaultFloorNameById(floorId),
@@ -290,6 +383,62 @@ function buildLayoutFromRooms(rooms) {
     })),
     activeFloorId: orderedFloorIds[0] || "floor_1",
   };
+
+  if (isSingleFloorPresetKey(presetKey)) {
+    return {
+      ...layout,
+      floors: layout.floors
+        .filter((floor) => floor.id === "floor_1")
+        .map((floor) => ({ ...floor, stairs: [] })),
+      activeFloorId: "floor_1",
+    };
+  }
+
+  if (isHousePresetKey(presetKey)) {
+    const hasFirstFloor = layout.floors.some((floor) => floor.id === "floor_2");
+    const nextFloors = hasFirstFloor
+      ? layout.floors
+      : [
+          ...layout.floors,
+          {
+            id: "floor_2",
+            name: "First Floor",
+            rooms: [],
+            doors: [],
+            windows: [],
+            spaces: [],
+            stairs: [],
+          },
+        ];
+
+    const withStairs = nextFloors.map((floor) => {
+      if (floor.id !== "floor_1") return floor;
+      const hasStairs = Array.isArray(floor.stairs) && floor.stairs.length > 0;
+      if (hasStairs) return floor;
+      return {
+        ...floor,
+        stairs: [
+          {
+            id: `stairs_${presetKey || "house"}_main`,
+            label: "Stairs",
+            x: 40,
+            y: 40,
+            w: 70,
+            h: 70,
+            angle: 0,
+          },
+        ],
+      };
+    });
+
+    return {
+      ...layout,
+      floors: withStairs,
+      activeFloorId: "floor_1",
+    };
+  }
+
+  return layout;
 }
 
 function normalizeFloorplanLayout(layout, rooms) {
@@ -340,6 +489,14 @@ function applyLayoutRules(layout) {
   return structuredPlanToLayout(constrained, layout);
 }
 
+function buildPresetLayout(presetKey, rooms) {
+  const baseLayout = buildLayoutFromRooms(rooms, presetKey);
+  if (isSingleFloorPresetKey(presetKey)) {
+    return baseLayout;
+  }
+  return applyLayoutRules(baseLayout);
+}
+
 function createBaseHome(id, name, presetKey) {
   const preset = getPresetByKey(presetKey);
   const rooms = buildRoomsFromPreset(preset.key);
@@ -355,7 +512,7 @@ function createBaseHome(id, name, presetKey) {
     fuseboxPhoto: null,
     gasChecks: buildBooleanMapFromRooms(rooms, false),
     fireAlarmChecks: buildBooleanMapFromRooms(rooms, false),
-    floorplanLayout: applyLayoutRules(buildLayoutFromRooms(rooms)),
+    floorplanLayout: buildPresetLayout(preset.key, rooms),
     inventoryReport: null,
   };
 }
@@ -399,6 +556,12 @@ function HomeScreen({
   const [newRoomFloorId, setNewRoomFloorId] = useState("floor_1");
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [pdfBranding, setPdfBranding] = useState({
+    companyName: "",
+    primaryColor: "#1f2937",
+    accentColor: "#e2e8f0",
+    logoDataUrl: null,
+  });
   const [floorplanStep, setFloorplanStep] = useState("preset");
   const [reportSections, setReportSections] = useState({
     fusebox: true,
@@ -422,6 +585,12 @@ function HomeScreen({
     setSelectedRoomId(null);
     setFloorplanStep("preset");
     setExportModalOpen(false);
+    setPdfBranding({
+      companyName: "",
+      primaryColor: "#1f2937",
+      accentColor: "#e2e8f0",
+      logoDataUrl: null,
+    });
   }, [home.id, home.presetKey]);
 
   useEffect(() => {
@@ -881,7 +1050,7 @@ function HomeScreen({
       rooms: nextRooms,
       gasChecks: buildBooleanMapFromRooms(nextRooms, false),
       fireAlarmChecks: buildBooleanMapFromRooms(nextRooms, false),
-      floorplanLayout: applyLayoutRules(buildLayoutFromRooms(nextRooms)),
+      floorplanLayout: buildPresetLayout(nextPreset.key, nextRooms),
     }));
     setNewRoomFloorId("floor_1");
     setSelectedRoomId(nextRooms[0]?.id || null);
@@ -947,7 +1116,7 @@ function HomeScreen({
     });
   };
 
-  const compressImageFileToDataUrl = async (file) =>
+  const compressImageFileToDataUrl = async (file, maxSize = 1280, quality = 0.78) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onerror = () => reject(new Error("Failed to read image"));
@@ -955,7 +1124,6 @@ function HomeScreen({
         const img = new Image();
         img.onerror = () => reject(new Error("Invalid image"));
         img.onload = () => {
-          const maxSize = 1280;
           const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
           const width = Math.round(img.width * scale);
           const height = Math.round(img.height * scale);
@@ -968,7 +1136,7 @@ function HomeScreen({
             return;
           }
           context.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/jpeg", 0.78));
+          resolve(canvas.toDataURL("image/jpeg", quality));
         };
         img.src = String(reader.result);
       };
@@ -992,6 +1160,22 @@ function HomeScreen({
     }
   };
 
+  const onPdfLogoSelected = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const logoDataUrl = await compressImageFileToDataUrl(file, 640, 0.82);
+      setPdfBranding((prev) => ({
+        ...prev,
+        logoDataUrl,
+      }));
+    } catch {
+      // no-op
+    } finally {
+      event.target.value = "";
+    }
+  };
+
   const exportReportPdf = () => {
     const selectedKeys = Object.entries(reportSections)
       .filter(([, enabled]) => enabled)
@@ -1001,12 +1185,28 @@ function HomeScreen({
     const doc = new jsPDF();
     const generatedAt = new Date().toLocaleString();
     const safeHomeName = (home.name || "Home").replace(/[^\w\s-]/g, "").trim() || "home";
+    const primaryRgb = hexToRgb(pdfBranding.primaryColor, [31, 41, 55]);
+    const accentRgb = hexToRgb(pdfBranding.accentColor, [226, 232, 240]);
     let currentY = 32;
 
+    if (pdfBranding.logoDataUrl) {
+      try {
+        doc.addImage(pdfBranding.logoDataUrl, "PNG", 14, 10, 20, 20);
+      } catch {
+        // no-op
+      }
+    }
+
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
     doc.setFontSize(18);
-    doc.text(`${home.name} - Property Report`, 14, 18);
+    doc.text(`${home.name} - Property Report`, pdfBranding.logoDataUrl ? 38 : 14, 18);
     doc.setFontSize(10);
-    doc.text(`Generated ${generatedAt}`, 14, 24);
+    doc.setTextColor(90, 90, 90);
+    doc.text(`Generated ${generatedAt}`, pdfBranding.logoDataUrl ? 38 : 14, 24);
+    if (pdfBranding.companyName.trim()) {
+      doc.text(`Prepared by ${pdfBranding.companyName.trim()}`, pdfBranding.logoDataUrl ? 38 : 14, 29);
+      currentY = 36;
+    }
 
     const addSectionHeading = (title) => {
       if (currentY > 260) {
@@ -1014,7 +1214,7 @@ function HomeScreen({
         currentY = 20;
       }
       doc.setFontSize(12);
-      doc.setTextColor(20, 20, 20);
+      doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
       doc.text(title, 14, currentY);
       currentY += 5;
     };
@@ -1025,7 +1225,8 @@ function HomeScreen({
         head: [head],
         body,
         styles: { fontSize: 9, cellPadding: 2 },
-        headStyles: { fillColor: [31, 41, 55] },
+        headStyles: { fillColor: primaryRgb },
+        alternateRowStyles: { fillColor: accentRgb },
       });
       currentY = doc.lastAutoTable.finalY + 8;
     };
@@ -1056,20 +1257,209 @@ function HomeScreen({
       const sx = (value) => offsetX + value * scale;
       const sy = (value) => offsetY + value * scale;
       const sw = (value) => value * scale;
+      const clampValue = (value, min, max) => Math.max(min, Math.min(max, value));
+      const toRadians = (degrees) => (degrees * Math.PI) / 180;
+      const rotatePoint = (x, y, cx, cy, degrees) => {
+        const rad = toRadians(degrees || 0);
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const dx = x - cx;
+        const dy = y - cy;
+        return {
+          x: cx + dx * cos - dy * sin,
+          y: cy + dx * sin + dy * cos,
+        };
+      };
+      const getRotatedRectFrame = (item) => {
+        const x = sx(item.x);
+        const y = sy(item.y);
+        const w = Math.max(2, sw(item.w));
+        const h = Math.max(2, sw(item.h));
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        const angle = item.angle || 0;
+        const p1 = rotatePoint(x, y, cx, cy, angle);
+        const p2 = rotatePoint(x + w, y, cx, cy, angle);
+        const p3 = rotatePoint(x + w, y + h, cx, cy, angle);
+        const p4 = rotatePoint(x, y + h, cx, cy, angle);
+        return { x, y, w, h, cx, cy, angle, p1, p2, p3, p4 };
+      };
+      const drawRotatedRect = (item, options = {}) => {
+        const frame = getRotatedRectFrame(item);
+        const { p1, p2, p3, p4 } = frame;
+
+        if (options.fillColor) {
+          doc.setFillColor(...options.fillColor);
+        }
+        if (options.strokeColor) {
+          doc.setDrawColor(...options.strokeColor);
+        }
+        doc.setLineWidth(options.lineWidth ?? 0.6);
+        doc.lines(
+          [
+            [p2.x - p1.x, p2.y - p1.y],
+            [p3.x - p2.x, p3.y - p2.y],
+            [p4.x - p3.x, p4.y - p3.y],
+            [p1.x - p4.x, p1.y - p4.y],
+          ],
+          p1.x,
+          p1.y,
+          [1, 1],
+          options.fill ? "FD" : "S",
+          false
+        );
+        return frame;
+      };
+      const formatSpaceLabel = (space) => {
+        const label = String(space?.label || "Space").toLowerCase();
+        if (label.includes("toilet")) return "WC";
+        if (label.includes("bath / shower")) return "Bath/Shower";
+        if (label.includes("bathroom sink")) return "Sink";
+        if (label.includes("sink")) return "Sink";
+        if (label.includes("fridge")) return "Fridge";
+        if (label.includes("oven") || label.includes("hob")) return "Oven/Hob";
+        if (label.includes("cabinet")) return "Cabinets";
+        if (label.includes("wardrobe")) return "Wardrobe";
+        if (label.includes("cupboard")) return "Cupboard";
+        if (label.includes("bed")) return "Bed";
+        if (label.includes("sofa")) return "Sofa";
+        if (label.includes("table")) return "Table";
+        if (label.includes("chair")) return "Chairs";
+        return String(space?.label || "Space");
+      };
+      const drawSpaceSymbol = (space, rect) => {
+        const label = String(space?.label || "").toLowerCase();
+        const rp = (px, py) => rotatePoint(px, py, rect.cx, rect.cy, rect.angle);
+        const drawLine = (x1, y1, x2, y2, width = 0.45) => {
+          const a = rp(x1, y1);
+          const b = rp(x2, y2);
+          doc.setLineWidth(width);
+          doc.line(a.x, a.y, b.x, b.y);
+        };
+        const drawRect = (x, y, w, h, lineWidth = 0.45, fill = false) => {
+          const p1 = rp(x, y);
+          const p2 = rp(x + w, y);
+          const p3 = rp(x + w, y + h);
+          const p4 = rp(x, y + h);
+          doc.setLineWidth(lineWidth);
+          doc.lines(
+            [
+              [p2.x - p1.x, p2.y - p1.y],
+              [p3.x - p2.x, p3.y - p2.y],
+              [p4.x - p3.x, p4.y - p3.y],
+              [p1.x - p4.x, p1.y - p4.y],
+            ],
+            p1.x,
+            p1.y,
+            [1, 1],
+            fill ? "FD" : "S",
+            false
+          );
+        };
+        const drawCircle = (cx, cy, r, lineWidth = 0.45) => {
+          const center = rp(cx, cy);
+          doc.setLineWidth(lineWidth);
+          doc.circle(center.x, center.y, r, "S");
+        };
+
+        doc.setDrawColor(40, 40, 40);
+        doc.setTextColor(70, 70, 70);
+        const x = rect.x;
+        const y = rect.y;
+        const w = rect.w;
+        const h = rect.h;
+
+        if (label.includes("bed")) {
+          drawRect(x + 1, y + 1, w - 2, h - 2, 0.6);
+          drawRect(x + 2, y + 2, Math.max(6, (w - 4) * 0.3), Math.max(4, (h - 4) * 0.3), 0.4);
+          return;
+        }
+        if (label.includes("sofa")) {
+          drawRect(x + w * 0.15, y + h * 0.35, w * 0.7, h * 0.45, 0.55);
+          drawRect(x + w * 0.05, y + h * 0.38, w * 0.1, h * 0.38, 0.55);
+          drawRect(x + w * 0.85, y + h * 0.38, w * 0.1, h * 0.38, 0.55);
+          return;
+        }
+        if (label.includes("table")) {
+          drawRect(x + w * 0.2, y + h * 0.2, w * 0.6, h * 0.6, 0.55);
+          return;
+        }
+        if (label.includes("chair")) {
+          const size = Math.min(w, h) * 0.55;
+          drawRect(x + (w - size) / 2, y + (h - size) / 2, size, size, 0.55);
+          return;
+        }
+        if (label.includes("toilet")) {
+          drawRect(x + w * 0.35, y + h * 0.05, w * 0.3, h * 0.22, 0.55);
+          drawCircle(x + w * 0.5, y + h * 0.62, Math.max(2, Math.min(w, h) * 0.22), 0.55);
+          return;
+        }
+        if (label.includes("bath") || label.includes("shower")) {
+          drawRect(x + 1, y + 1, w - 2, h - 2, 0.55);
+          if (label.includes("shower")) {
+            drawLine(x + 2, y + 2, x + w - 2, y + h - 2, 0.45);
+            drawLine(x + w - 2, y + 2, x + 2, y + h - 2, 0.45);
+          }
+          return;
+        }
+        if (label.includes("sink")) {
+          drawRect(x + w * 0.2, y + h * 0.2, w * 0.6, h * 0.6, 0.55);
+          drawCircle(x + w * 0.5, y + h * 0.5, Math.max(2, Math.min(w, h) * 0.16), 0.45);
+          return;
+        }
+        if (label.includes("cabinet") || label.includes("wardrobe") || label.includes("cupboard")) {
+          drawRect(x + 1, y + 1, w - 2, h - 2, 0.55);
+          drawLine(x + w * 0.5, y + 2, x + w * 0.5, y + h - 2, 0.45);
+          return;
+        }
+        if (label.includes("oven") || label.includes("hob")) {
+          drawRect(x + 1, y + 1, w - 2, h - 2, 0.55);
+          const radius = Math.max(1.4, Math.min(w, h) * 0.08);
+          drawCircle(x + w * 0.35, y + h * 0.35, radius, 0.45);
+          drawCircle(x + w * 0.65, y + h * 0.35, radius, 0.45);
+          drawCircle(x + w * 0.35, y + h * 0.65, radius, 0.45);
+          drawCircle(x + w * 0.65, y + h * 0.65, radius, 0.45);
+          return;
+        }
+        if (label.includes("fridge")) {
+          doc.setLineDashPattern([1.5, 1.5], 0);
+          drawRect(x + 1, y + 1, w - 2, h - 2, 0.55);
+          doc.setLineDashPattern([], 0);
+          return;
+        }
+      };
+      const roomBounds = (floor.rooms || []).reduce(
+        (acc, room) => ({
+          minX: Math.min(acc.minX, room.x || 0),
+          minY: Math.min(acc.minY, room.y || 0),
+          maxX: Math.max(acc.maxX, (room.x || 0) + (room.w || 0)),
+          maxY: Math.max(acc.maxY, (room.y || 0) + (room.h || 0)),
+        }),
+        { minX: Infinity, minY: Infinity, maxX: 0, maxY: 0 }
+      );
 
       doc.setFontSize(14);
-      doc.setTextColor(25, 25, 25);
+      doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
       doc.text(`Floorplan: ${floor.name}`, margin, headerY);
       doc.setDrawColor(200, 200, 200);
       doc.setLineWidth(0.25);
       doc.rect(drawX, drawY, drawWidth, drawHeight);
+
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.2);
+      for (let gx = 0; gx <= maxX; gx += 40) {
+        doc.line(sx(gx), drawY, sx(gx), drawY + drawHeight);
+      }
+      for (let gy = 0; gy <= maxY; gy += 40) {
+        doc.line(drawX, sy(gy), drawX + drawWidth, sy(gy));
+      }
 
       (floor.rooms || []).forEach((room) => {
         const roomWidthMeters = pixelsToMeters(room.w, 4);
         const roomHeightMeters = pixelsToMeters(room.h, 3);
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(0, 0, 0);
-        doc.setLineWidth(1.2);
+        doc.setLineWidth(1.1);
         doc.rect(sx(room.x), sy(room.y), sw(room.w), sw(room.h), "FD");
         doc.setTextColor(30, 30, 30);
         doc.setFontSize(8);
@@ -1082,53 +1472,173 @@ function HomeScreen({
       });
 
       (floor.doors || []).forEach((door) => {
-        doc.setDrawColor(150, 100, 0);
-        doc.setLineWidth(1);
-        doc.line(sx(door.x), sy(door.y), sx(door.x + door.w), sy(door.y));
+        const x = sx(door.x);
+        const y = sy(door.y);
+        const doorW = Math.max(8, sw(door.w || 24));
+        const doorH = Math.max(6, sw(door.h || 20));
+        const cx = x + doorW / 2;
+        const cy = y + doorH / 2;
+        const angle = door.angle || 0;
+        const baseStartRaw = { x: x + 2, y: y + doorH - 2 };
+        const baseEndRaw = { x: x + doorW - 2, y: y + doorH - 2 };
+        const leafEndRaw = { x: x + doorW - 2, y: y + 4 };
+        const baseStart = rotatePoint(baseStartRaw.x, baseStartRaw.y, cx, cy, angle);
+        const baseEnd = rotatePoint(baseEndRaw.x, baseEndRaw.y, cx, cy, angle);
+        const leafEnd = rotatePoint(leafEndRaw.x, leafEndRaw.y, cx, cy, angle);
+
+        // White opening in wall where the door sits.
+        doc.setDrawColor(255, 255, 255);
+        doc.setLineWidth(2.1);
+        doc.line(baseStart.x, baseStart.y, baseEnd.x, baseEnd.y);
+
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.9);
+        doc.line(baseStart.x, baseStart.y, baseEnd.x, baseEnd.y);
+        doc.setLineWidth(0.7);
+        doc.line(baseStart.x, baseStart.y, leafEnd.x, leafEnd.y);
+
+        doc.setDrawColor(110, 110, 110);
+        doc.setLineWidth(0.4);
+        const steps = 12;
+        let prevX = baseStart.x;
+        let prevY = baseStart.y;
+        for (let i = 1; i <= steps; i += 1) {
+          const t = i / steps;
+          const angle = (Math.PI / 2) * t;
+          const localX = baseStartRaw.x + (baseEndRaw.x - baseStartRaw.x) * Math.sin(angle);
+          const localY = baseStartRaw.y - (baseStartRaw.y - leafEndRaw.y) * (1 - Math.cos(angle));
+          const point = rotatePoint(localX, localY, cx, cy, door.angle || 0);
+          if (i % 2 === 1) {
+            doc.line(prevX, prevY, point.x, point.y);
+          }
+          prevX = point.x;
+          prevY = point.y;
+        }
       });
 
       (floor.windows || []).forEach((windowItem) => {
-        doc.setFillColor(200, 235, 255);
-        doc.setDrawColor(14, 165, 233);
-        doc.setLineWidth(0.8);
-        doc.rect(
-          sx(windowItem.x),
-          sy(windowItem.y),
-          Math.max(2, sw(windowItem.w)),
-          Math.max(2, sw(windowItem.h)),
-          "FD"
+        const rect = drawRotatedRect(windowItem, {
+          fill: true,
+          fillColor: [255, 255, 255],
+          strokeColor: [80, 80, 80],
+          lineWidth: 1.1,
+        });
+        const mullion1A = rotatePoint(rect.x + rect.w * 0.33, rect.y + 1, rect.cx, rect.cy, rect.angle);
+        const mullion1B = rotatePoint(
+          rect.x + rect.w * 0.33,
+          rect.y + rect.h - 1,
+          rect.cx,
+          rect.cy,
+          rect.angle
         );
+        const mullion2A = rotatePoint(rect.x + rect.w * 0.66, rect.y + 1, rect.cx, rect.cy, rect.angle);
+        const mullion2B = rotatePoint(
+          rect.x + rect.w * 0.66,
+          rect.y + rect.h - 1,
+          rect.cx,
+          rect.cy,
+          rect.angle
+        );
+        doc.setDrawColor(80, 80, 80);
+        doc.setLineWidth(0.5);
+        doc.line(mullion1A.x, mullion1A.y, mullion1B.x, mullion1B.y);
+        doc.line(mullion2A.x, mullion2A.y, mullion2B.x, mullion2B.y);
       });
 
       (floor.spaces || []).forEach((space) => {
-        doc.setFillColor(240, 240, 240);
-        doc.setDrawColor(150, 150, 150);
-        doc.setLineWidth(0.5);
-        doc.rect(sx(space.x), sy(space.y), sw(space.w), sw(space.h), "FD");
-        doc.setTextColor(90, 90, 90);
-        doc.setFontSize(7);
-        doc.text(
-          String(space.label || "Space"),
-          sx(space.x) + 1.5,
-          sy(space.y) + 3.5,
-          { maxWidth: Math.max(8, sw(space.w) - 3) }
-        );
+        const spaceLabel = String(space?.label || "").toLowerCase();
+        const hideContainer =
+          spaceLabel.includes("sink") ||
+          spaceLabel.includes("toilet") ||
+          spaceLabel.includes("bed") ||
+          spaceLabel.includes("sofa") ||
+          spaceLabel.includes("table") ||
+          spaceLabel.includes("chair") ||
+          spaceLabel.includes("bath") ||
+          spaceLabel.includes("shower") ||
+          spaceLabel.includes("cabinet") ||
+          spaceLabel.includes("wardrobe") ||
+          spaceLabel.includes("cupboard") ||
+          spaceLabel.includes("oven") ||
+          spaceLabel.includes("hob") ||
+          spaceLabel.includes("fridge");
+        const rect = hideContainer
+          ? getRotatedRectFrame(space)
+          : drawRotatedRect(space, {
+              fill: true,
+              fillColor: [255, 255, 255],
+              strokeColor: [140, 140, 140],
+              lineWidth: 0.4,
+            });
+        drawSpaceSymbol(space, rect);
+        const labelText = formatSpaceLabel(space);
+        const tagPadding = 1.8;
+        doc.setFontSize(6.8);
+        const rawTextWidth = doc.getTextWidth(labelText);
+        const tagWidth = Math.max(12, rawTextWidth + tagPadding * 2);
+        const tagHeight = 4.8;
+        const tagX = clampValue(rect.cx - tagWidth / 2, drawX + 1, drawX + drawWidth - tagWidth - 1);
+        const tagY = clampValue(rect.y + rect.h + 1.2, drawY + 1, drawY + drawHeight - tagHeight - 1);
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(190, 190, 190);
+        doc.setLineWidth(0.2);
+        doc.rect(tagX, tagY, tagWidth, tagHeight, "FD");
+        doc.setTextColor(70, 70, 70);
+        doc.text(labelText, tagX + tagPadding, tagY + 3.4);
       });
 
       (floor.stairs || []).forEach((stairsItem) => {
-        doc.setFillColor(220, 220, 220);
-        doc.setDrawColor(90, 90, 90);
-        doc.setLineWidth(0.8);
-        doc.rect(sx(stairsItem.x), sy(stairsItem.y), sw(stairsItem.w), sw(stairsItem.h), "FD");
+        const rect = drawRotatedRect(stairsItem, {
+          fill: true,
+          fillColor: [220, 220, 220],
+          strokeColor: [90, 90, 90],
+          lineWidth: 0.8,
+        });
         doc.setTextColor(80, 80, 80);
         doc.setFontSize(7);
         doc.text(
           String(stairsItem.label || "Stairs"),
-          sx(stairsItem.x) + 1.5,
-          sy(stairsItem.y) + 3.5,
-          { maxWidth: Math.max(8, sw(stairsItem.w) - 3) }
+          rect.cx - Math.min(18, rect.w / 2),
+          rect.cy,
+          { maxWidth: Math.max(8, rect.w - 4) }
         );
       });
+
+      if (Number.isFinite(roomBounds.minX) && roomBounds.maxX > roomBounds.minX) {
+        const dimY = sy(roomBounds.maxY) + 10;
+        doc.setDrawColor(120, 120, 120);
+        doc.setLineWidth(0.35);
+        doc.line(sx(roomBounds.minX), dimY, sx(roomBounds.maxX), dimY);
+        doc.line(sx(roomBounds.minX), dimY - 2, sx(roomBounds.minX), dimY + 2);
+        doc.line(sx(roomBounds.maxX), dimY - 2, sx(roomBounds.maxX), dimY + 2);
+        doc.setTextColor(90, 90, 90);
+        doc.setFontSize(8);
+        doc.text(
+          `${Number(((roomBounds.maxX - roomBounds.minX) / FLOORPLAN_PIXELS_PER_METER).toFixed(2))}m`,
+          (sx(roomBounds.minX) + sx(roomBounds.maxX)) / 2 - 6,
+          dimY - 1
+        );
+      }
+
+      if (Number.isFinite(roomBounds.minY) && roomBounds.maxY > roomBounds.minY) {
+        const dimX = sx(roomBounds.maxX) + 8;
+        doc.setDrawColor(120, 120, 120);
+        doc.setLineWidth(0.35);
+        doc.line(dimX, sy(roomBounds.minY), dimX, sy(roomBounds.maxY));
+        doc.line(dimX - 2, sy(roomBounds.minY), dimX + 2, sy(roomBounds.minY));
+        doc.line(dimX - 2, sy(roomBounds.maxY), dimX + 2, sy(roomBounds.maxY));
+        doc.setTextColor(90, 90, 90);
+        doc.setFontSize(8);
+        doc.text(
+          `${Number(((roomBounds.maxY - roomBounds.minY) / FLOORPLAN_PIXELS_PER_METER).toFixed(2))}m`,
+          dimX + 1.5,
+          (sy(roomBounds.minY) + sy(roomBounds.maxY)) / 2
+        );
+      }
+
+      doc.setTextColor(80, 80, 80);
+      doc.setFontSize(8);
+      doc.text("Scale approx: 1m grid", drawX + 2, drawY + drawHeight - 3);
     };
 
     if (reportSections.fusebox) {
@@ -1647,7 +2157,7 @@ function HomeScreen({
       <div className="px-4 pt-3">
         <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl">
           <FloorplanCanvas
-            layout={home.floorplanLayout || buildLayoutFromRooms(home.rooms)}
+            layout={home.floorplanLayout || buildLayoutFromRooms(home.rooms, home.presetKey)}
             onLayoutChange={updateFloorplanLayout}
             availableRooms={home.rooms.map((room) => room.name)}
             onRoomFloorChange={updateRoomFloor}
@@ -1830,6 +2340,86 @@ function HomeScreen({
                   />
                 </label>
               ))}
+            </div>
+
+            <div className="mt-3 rounded-lg border border-zinc-200 p-3">
+              <p className="text-xs font-semibold text-zinc-700">PDF Branding</p>
+              <div className="mt-2 space-y-2">
+                <input
+                  type="text"
+                  value={pdfBranding.companyName}
+                  onChange={(event) =>
+                    setPdfBranding((prev) => ({
+                      ...prev,
+                      companyName: event.target.value,
+                    }))
+                  }
+                  placeholder="Company name"
+                  className="h-9 w-full rounded-lg border border-zinc-300 px-3 text-xs"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600">
+                    Primary
+                    <input
+                      type="color"
+                      value={pdfBranding.primaryColor}
+                      onChange={(event) =>
+                        setPdfBranding((prev) => ({
+                          ...prev,
+                          primaryColor: event.target.value,
+                        }))
+                      }
+                      className="mt-1 h-8 w-full cursor-pointer rounded border border-zinc-200"
+                    />
+                  </label>
+                  <label className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600">
+                    Accent
+                    <input
+                      type="color"
+                      value={pdfBranding.accentColor}
+                      onChange={(event) =>
+                        setPdfBranding((prev) => ({
+                          ...prev,
+                          accentColor: event.target.value,
+                        }))
+                      }
+                      className="mt-1 h-8 w-full cursor-pointer rounded border border-zinc-200"
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700 flex items-center cursor-pointer">
+                    Upload Logo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={onPdfLogoSelected}
+                    />
+                  </label>
+                  {pdfBranding.logoDataUrl ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPdfBranding((prev) => ({
+                          ...prev,
+                          logoDataUrl: null,
+                        }))
+                      }
+                      className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700"
+                    >
+                      Remove Logo
+                    </button>
+                  ) : null}
+                </div>
+                {pdfBranding.logoDataUrl ? (
+                  <img
+                    src={pdfBranding.logoDataUrl}
+                    alt="PDF logo preview"
+                    className="h-12 w-auto rounded border border-zinc-200 bg-white p-1"
+                  />
+                ) : null}
+              </div>
             </div>
 
             <div className="mt-3 flex items-center justify-end gap-2">
@@ -2016,13 +2606,41 @@ export default function App() {
   useEffect(() => {
     if (!userId) return;
 
-    localStorage.setItem(
-      getStorageKey(userId),
-      JSON.stringify({
-        homes,
-        activeHomeId,
-      })
-    );
+    const storageKey = getStorageKey(userId);
+    const statePayload = {
+      homes,
+      activeHomeId,
+    };
+
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(statePayload));
+    } catch {
+      // If media payloads are too large for localStorage, keep structure and text data.
+      const compactHomes = homes.map((home) => ({
+        ...home,
+        inventoryReport: home.inventoryReport
+          ? {
+              ...home.inventoryReport,
+              rooms: (home.inventoryReport.rooms || []).map((room) => ({
+                ...room,
+                media: [],
+              })),
+            }
+          : null,
+      }));
+
+      try {
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            homes: compactHomes,
+            activeHomeId,
+          })
+        );
+      } catch {
+        // no-op
+      }
+    }
   }, [userId, homes, activeHomeId]);
 
   useEffect(() => {
