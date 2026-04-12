@@ -1,5 +1,14 @@
 import { useState } from "react";
 
+const IMAGE_ACCEPT =
+  "image/*,.heic,.heif,image/heic,image/heif,image/heic-sequence,image/heif-sequence";
+
+function isHeifLikeFile(file) {
+  const type = String(file?.type || "").toLowerCase();
+  const name = String(file?.name || "").toLowerCase();
+  return type.includes("heic") || type.includes("heif") || name.endsWith(".heic") || name.endsWith(".heif");
+}
+
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -43,12 +52,14 @@ function compressDataUrl(image, maxLongEdge, quality = 0.72) {
 
 export default function MediaUploader({ onCapturePanorama, onCaptureDetailPhoto }) {
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleFile = async (file, mode = "pano") => {
     if (!file) return;
 
     try {
       setUploading(true);
+      setError("");
       const sourceDataUrl = await readFileAsDataUrl(file);
       await loadImageMeta(sourceDataUrl);
       const imageEl = await loadImageElement(sourceDataUrl);
@@ -68,7 +79,11 @@ export default function MediaUploader({ onCapturePanorama, onCaptureDetailPhoto 
         onCaptureDetailPhoto(media);
       }
     } catch {
-      // ignore bad files
+      setError(
+        isHeifLikeFile(file)
+          ? "This device/browser could not read that HEIF/HEIC image. Convert it to JPG or PNG, or try uploading it from Safari/iPhone Photos."
+          : "That image could not be read. Try a JPG or PNG file."
+      );
     } finally {
       setUploading(false);
     }
@@ -80,20 +95,27 @@ export default function MediaUploader({ onCapturePanorama, onCaptureDetailPhoto 
         {uploading ? "Adding panorama..." : "Add Panorama"}
         <input
           type="file"
-          accept="image/*"
+          accept={IMAGE_ACCEPT}
           className="hidden"
-          onChange={(event) => handleFile(event.target.files?.[0], "pano")}
+          onChange={(event) => {
+            handleFile(event.target.files?.[0], "pano");
+            event.target.value = "";
+          }}
         />
       </label>
       <label className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700 flex items-center cursor-pointer">
         {uploading ? "Adding detail..." : "Add Photo"}
         <input
           type="file"
-          accept="image/*"
+          accept={IMAGE_ACCEPT}
           className="hidden"
-          onChange={(event) => handleFile(event.target.files?.[0], "detail")}
+          onChange={(event) => {
+            handleFile(event.target.files?.[0], "detail");
+            event.target.value = "";
+          }}
         />
       </label>
+      {error ? <p className="w-full text-[11px] font-medium text-red-600">{error}</p> : null}
     </div>
   );
 }

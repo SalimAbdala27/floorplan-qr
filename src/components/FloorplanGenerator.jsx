@@ -10,11 +10,6 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function parseNumber(value, fallback) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
 function normalizeAngle(degrees) {
   let angle = Number.isFinite(Number(degrees)) ? Number(degrees) : 0;
   while (angle > 180) angle -= 360;
@@ -323,6 +318,16 @@ function ToolIcon({ name, className = "h-4 w-4" }) {
     );
   }
 
+  if (name === "info") {
+    return (
+      <svg {...shared}>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 10v5" />
+        <circle cx="12" cy="7" r="0.8" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
   return (
     <svg {...shared}>
       <circle cx="12" cy="12" r="7" />
@@ -343,6 +348,7 @@ export default function FloorplanGenerator({
   const [quickToolsOpen, setQuickToolsOpen] = useState(false);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
   const [roomMeasurementDraft, setRoomMeasurementDraft] = useState({ width: "", height: "" });
+  const [selectedPropertyDraft, setSelectedPropertyDraft] = useState({ w: "", h: "", angle: "" });
   const [zoom, setZoom] = useState(1);
   const [snapRotation, setSnapRotation] = useState(true);
   const [hasUserAdjustedZoom, setHasUserAdjustedZoom] = useState(false);
@@ -471,6 +477,19 @@ export default function FloorplanGenerator({
       height: String(selectedRoomHeightMeters),
     });
   }, [selected?.floorId, selected?.id, selected?.type, selectedItem, selectedRoomWidthMeters, selectedRoomHeightMeters]);
+
+  useEffect(() => {
+    if (!selectedItem || selected?.type === "rooms") {
+      setSelectedPropertyDraft({ w: "", h: "", angle: "" });
+      return;
+    }
+
+    setSelectedPropertyDraft({
+      w: String(selectedItem.w ?? 0),
+      h: String(selectedItem.h ?? 0),
+      angle: String(selectedItem.angle ?? 0),
+    });
+  }, [selected?.floorId, selected?.id, selected?.type, selectedItem]);
 
   useEffect(() => {
     lastCommittedLayoutRef.current = normalizedLayout;
@@ -822,6 +841,31 @@ export default function FloorplanGenerator({
         dimension === "width" ? getMinSize("rooms").w : getMinSize("rooms").h,
         800
       ),
+    });
+  };
+
+  const commitSelectedPropertyDraft = (key) => {
+    if (!selectedItem || !selected || selected.type === "rooms") return;
+
+    const draftValue = selectedPropertyDraft[key];
+    const parsed = Number.parseFloat(draftValue);
+    if (!Number.isFinite(parsed)) {
+      setSelectedPropertyDraft((prev) => ({
+        ...prev,
+        [key]: String(selectedItem[key] ?? 0),
+      }));
+      return;
+    }
+
+    updateSelected({
+      [key]:
+        key === "angle"
+          ? clamp(parsed, -180, 180)
+          : clamp(
+              Math.round(parsed),
+              key === "w" ? getMinSize(selected.type).w : getMinSize(selected.type).h,
+              800
+            ),
     });
   };
 
@@ -1578,6 +1622,12 @@ export default function FloorplanGenerator({
               </button>
             </div>
           </div>
+          <div className="mt-2 flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sky-900">
+            <ToolIcon name="info" className="mt-0.5 h-4 w-4 shrink-0" />
+            <p className="text-[11px] font-medium">
+              Press and hold an item, then move it. Tap once to select it and edit its properties.
+            </p>
+          </div>
         </div>
 
         <div className="relative flex-1 overflow-hidden bg-neutral-100">
@@ -1748,13 +1798,19 @@ export default function FloorplanGenerator({
                               step="1"
                               min="-180"
                               max="180"
-                              value={selectedItem.angle || 0}
-                              onChange={(event) => {
-                                const nextValue = Number.parseFloat(event.target.value);
-                                if (!Number.isFinite(nextValue)) return;
-                                updateSelected({
-                                  angle: clamp(nextValue, -180, 180),
-                                });
+                              value={selectedPropertyDraft.angle}
+                              onChange={(event) =>
+                                setSelectedPropertyDraft((prev) => ({
+                                  ...prev,
+                                  angle: event.target.value,
+                                }))
+                              }
+                              onBlur={() => commitSelectedPropertyDraft("angle")}
+                              onKeyDown={(event) => {
+                                event.stopPropagation();
+                                if (event.key === "Enter") {
+                                  event.currentTarget.blur();
+                                }
                               }}
                               className="mt-1 h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
                             />
@@ -1767,15 +1823,20 @@ export default function FloorplanGenerator({
                           <input
                             key={`prop-${key}`}
                             type="number"
-                            value={selectedItem[key] ?? 0}
+                            value={selectedPropertyDraft[key]}
                             onChange={(event) =>
-                              updateSelected({
-                                [key]:
-                                  key === "angle"
-                                    ? clamp(parseNumber(event.target.value, selectedItem[key] ?? 0), -180, 180)
-                                    : clamp(parseNumber(event.target.value, selectedItem[key] ?? 0), 4, 800),
-                              })
+                              setSelectedPropertyDraft((prev) => ({
+                                ...prev,
+                                [key]: event.target.value,
+                              }))
                             }
+                            onBlur={() => commitSelectedPropertyDraft(key)}
+                            onKeyDown={(event) => {
+                              event.stopPropagation();
+                              if (event.key === "Enter") {
+                                event.currentTarget.blur();
+                              }
+                            }}
                             className="h-9 rounded-xl border border-zinc-300 px-2 text-sm"
                           />
                         ))}
