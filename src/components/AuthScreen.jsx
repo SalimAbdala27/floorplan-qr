@@ -100,6 +100,12 @@ export default function AuthScreen() {
         >
           {isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
         </button>
+
+        <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2">
+          <p className="text-[11px] font-medium text-sky-900">
+            On iPhone or iPad, open this app in Safari and use Share then `Add to Home Screen` for easier access.
+          </p>
+        </div>
       </div>
     </div>
   );
