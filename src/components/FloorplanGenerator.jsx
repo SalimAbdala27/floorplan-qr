@@ -394,13 +394,13 @@ export default function FloorplanGenerator({
     const fitByHeight = (viewportHeight - 6) / CANVAS_HEIGHT;
     return Math.min(1, Math.max(0.35, Math.min(fitByWidth, fitByHeight)));
   }, [viewportWidth, viewportHeight]);
-  const minZoom = 0.5;
-  const maxZoom = 1;
+  const minZoom = 0.25;
+  const maxZoom = 2;
   const effectiveZoom = zoom * fitZoom;
 
   useEffect(() => {
     if (!viewportWidth || !fitZoom || hasUserAdjustedZoom) return;
-    const targetZoom = 0.8;
+    const targetZoom = 1;
     setZoom(targetZoom);
   }, [viewportWidth, fitZoom, hasUserAdjustedZoom, minZoom, maxZoom]);
 
@@ -515,7 +515,7 @@ export default function FloorplanGenerator({
     const previousHtmlOverscroll = documentElement.style.overscrollBehavior;
 
     body.style.overflow = "hidden";
-    body.style.touchAction = "none";
+    body.style.touchAction = "manipulation";
     documentElement.style.overflow = "hidden";
     documentElement.style.overscrollBehavior = "none";
 
@@ -1529,10 +1529,10 @@ export default function FloorplanGenerator({
   }
 
   return (
-    <div className="fixed inset-0 z-50 overscroll-none bg-white">
-      <div className="flex h-full flex-col">
-        <div className="border-b border-zinc-200 bg-white px-2 py-2">
-          <div className="flex items-start justify-between gap-2">
+    <div className="fixed inset-0 z-50 h-[100dvh] overflow-hidden overscroll-none bg-white">
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="sticky top-0 z-20 border-b border-zinc-200 bg-white px-2 py-2" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
+          <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Floors</p>
               <div className="mt-1 flex min-w-0 gap-1 overflow-x-auto pb-1">
@@ -1550,7 +1550,7 @@ export default function FloorplanGenerator({
                 ))}
               </div>
             </div>
-            <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex">
+            <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:w-auto sm:grid-cols-4 lg:flex">
               <button
                 type="button"
                 onClick={undoLayoutChange}
@@ -1583,11 +1583,11 @@ export default function FloorplanGenerator({
               </button>
             </div>
           </div>
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <p className="truncate text-[11px] text-zinc-500">
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="min-w-0 flex-1 text-[11px] text-zinc-500">
               Drag to move. Green handle resizes. Blue handle rotates.
             </p>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => {
@@ -1601,6 +1601,16 @@ export default function FloorplanGenerator({
               <span className="min-w-[44px] text-center text-[11px] font-semibold text-zinc-600">
                 {Math.round(zoom * 100)}%
               </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setHasUserAdjustedZoom(false);
+                  setZoom(1);
+                }}
+                className="h-8 rounded-lg bg-zinc-100 px-2.5 text-[11px] font-semibold text-zinc-700"
+              >
+                Fit
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -1630,7 +1640,7 @@ export default function FloorplanGenerator({
           </div>
         </div>
 
-        <div className="relative flex-1 overflow-hidden bg-neutral-100">
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-neutral-100" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
           <div
             className={`h-full p-2 ${
               selectedItem && propertiesOpen
