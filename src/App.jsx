@@ -544,6 +544,7 @@ function HomeScreen({
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomFloorId, setNewRoomFloorId] = useState("floor_1");
   const [selectedRoomId, setSelectedRoomId] = useState(null);
+  const [roomMeasurementDraft, setRoomMeasurementDraft] = useState({ width: "", height: "" });
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [pdfBranding, setPdfBranding] = useState({
     companyName: "",
@@ -572,6 +573,7 @@ function HomeScreen({
     setNewRoomName("");
     setNewRoomFloorId("floor_1");
     setSelectedRoomId(null);
+    setRoomMeasurementDraft({ width: "", height: "" });
     setFloorplanStep("preset");
     setExportModalOpen(false);
     setPdfBranding({
@@ -613,12 +615,26 @@ function HomeScreen({
     () => home.rooms.find((room) => room.id === selectedRoomId) || null,
     [home.rooms, selectedRoomId]
   );
+  const selectedRoomWidthMeters = selectedRoom?.widthMeters ?? 4;
+  const selectedRoomHeightMeters = selectedRoom?.heightMeters ?? 3;
 
   useEffect(() => {
     if (!floors.some((floor) => floor.id === newRoomFloorId)) {
       setNewRoomFloorId(floors[0]?.id || "floor_1");
     }
   }, [floors, newRoomFloorId]);
+
+  useEffect(() => {
+    if (!selectedRoom) {
+      setRoomMeasurementDraft({ width: "", height: "" });
+      return;
+    }
+
+    setRoomMeasurementDraft({
+      width: String(selectedRoomWidthMeters),
+      height: String(selectedRoomHeightMeters),
+    });
+  }, [selectedRoomId, selectedRoom, selectedRoomWidthMeters, selectedRoomHeightMeters]);
 
   const circuitsByFuse = useMemo(
     () =>
@@ -1034,6 +1050,23 @@ function HomeScreen({
         },
       };
     });
+  };
+
+  const commitRoomMeasurementDraft = (roomId, dimension) => {
+    const draftValue = roomMeasurementDraft[dimension];
+    const parsed = Number.parseFloat(draftValue);
+
+    if (!Number.isFinite(parsed)) {
+      setRoomMeasurementDraft((prev) => ({
+        ...prev,
+        [dimension]: String(dimension === "width" ? selectedRoomWidthMeters : selectedRoomHeightMeters),
+      }));
+      return;
+    }
+
+    const nextWidth = dimension === "width" ? parsed : selectedRoomWidthMeters;
+    const nextHeight = dimension === "height" ? parsed : selectedRoomHeightMeters;
+    updateRoomMeasurements(roomId, nextWidth, nextHeight);
   };
 
   const toggleGasCheck = (roomId) => {
@@ -2190,14 +2223,19 @@ function HomeScreen({
                     step="0.1"
                     min="1"
                     max="20"
-                    value={selectedRoom.widthMeters ?? 4}
+                    value={roomMeasurementDraft.width}
                     onChange={(event) =>
-                      updateRoomMeasurements(
-                        selectedRoom.id,
-                        event.target.value,
-                        selectedRoom.heightMeters ?? 3
-                      )
+                      setRoomMeasurementDraft((prev) => ({
+                        ...prev,
+                        width: event.target.value,
+                      }))
                     }
+                    onBlur={() => commitRoomMeasurementDraft(selectedRoom.id, "width")}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.currentTarget.blur();
+                      }
+                    }}
                     className="mt-1 h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
                   />
                 </label>
@@ -2208,14 +2246,19 @@ function HomeScreen({
                     step="0.1"
                     min="1"
                     max="20"
-                    value={selectedRoom.heightMeters ?? 3}
+                    value={roomMeasurementDraft.height}
                     onChange={(event) =>
-                      updateRoomMeasurements(
-                        selectedRoom.id,
-                        selectedRoom.widthMeters ?? 4,
-                        event.target.value
-                      )
+                      setRoomMeasurementDraft((prev) => ({
+                        ...prev,
+                        height: event.target.value,
+                      }))
                     }
+                    onBlur={() => commitRoomMeasurementDraft(selectedRoom.id, "height")}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.currentTarget.blur();
+                      }
+                    }}
                     className="mt-1 h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
                   />
                 </label>

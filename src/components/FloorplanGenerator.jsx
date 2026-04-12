@@ -173,6 +173,163 @@ const QUICK_TOOL_GROUPS = [
   },
 ];
 
+function ToolIcon({ name, className = "h-4 w-4" }) {
+  const shared = {
+    className,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    "aria-hidden": "true",
+  };
+
+  if (name === "room") {
+    return (
+      <svg {...shared}>
+        <rect x="4" y="5" width="16" height="14" rx="1.5" />
+        <path d="M9 19v-4h6v4" />
+      </svg>
+    );
+  }
+
+  if (name === "door") {
+    return (
+      <svg {...shared}>
+        <path d="M6 19V5h7v14" />
+        <path d="M6 19h12" />
+        <path d="M13 6c3.5 1.5 5 4.3 5 8" />
+        <circle cx="11" cy="12" r="0.8" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
+  if (name === "window") {
+    return (
+      <svg {...shared}>
+        <rect x="4" y="6" width="16" height="12" rx="1.5" />
+        <path d="M12 6v12M4 12h16" />
+      </svg>
+    );
+  }
+
+  if (name === "stairs") {
+    return (
+      <svg {...shared}>
+        <path d="M5 18h3v-3h3v-3h3V9h3V6h2" />
+      </svg>
+    );
+  }
+
+  if (name === "delete") {
+    return (
+      <svg {...shared}>
+        <path d="M5 7h14" />
+        <path d="M9 7V5h6v2" />
+        <path d="M8 7l1 12h6l1-12" />
+      </svg>
+    );
+  }
+
+  if (name === "bed") {
+    return (
+      <svg {...shared}>
+        <path d="M4 17v-6h16v6" />
+        <path d="M7 11V8h4a2 2 0 0 1 2 2v1" />
+        <path d="M4 17v2M20 17v2" />
+      </svg>
+    );
+  }
+
+  if (name === "sofa") {
+    return (
+      <svg {...shared}>
+        <path d="M6 10V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2" />
+        <path d="M5 10h14a2 2 0 0 1 2 2v4H3v-4a2 2 0 0 1 2-2Z" />
+      </svg>
+    );
+  }
+
+  if (name === "table") {
+    return (
+      <svg {...shared}>
+        <rect x="6" y="7" width="12" height="6" rx="1.5" />
+        <path d="M8 13v4M16 13v4" />
+      </svg>
+    );
+  }
+
+  if (name === "chair") {
+    return (
+      <svg {...shared}>
+        <path d="M8 11h8v4H8z" />
+        <path d="M9 15v4M15 15v4M8 11V8h8v3" />
+      </svg>
+    );
+  }
+
+  if (name === "toilet") {
+    return (
+      <svg {...shared}>
+        <path d="M9 6h6v4H9z" />
+        <path d="M8 12a4 4 0 1 0 8 0v-1H8z" />
+      </svg>
+    );
+  }
+
+  if (name === "sink") {
+    return (
+      <svg {...shared}>
+        <path d="M7 9h10v4a5 5 0 0 1-10 0V9Z" />
+        <path d="M10 6c0-1.1.9-2 2-2s2 .9 2 2" />
+      </svg>
+    );
+  }
+
+  if (name === "bath") {
+    return (
+      <svg {...shared}>
+        <rect x="5" y="9" width="14" height="6" rx="3" />
+        <path d="M7 15v2M17 15v2" />
+      </svg>
+    );
+  }
+
+  if (name === "cabinet") {
+    return (
+      <svg {...shared}>
+        <rect x="6" y="5" width="12" height="14" rx="1.5" />
+        <path d="M12 5v14" />
+      </svg>
+    );
+  }
+
+  if (name === "oven") {
+    return (
+      <svg {...shared}>
+        <rect x="6" y="5" width="12" height="14" rx="1.5" />
+        <path d="M8 9h8M9 7h.01M12 7h.01M15 7h.01" />
+      </svg>
+    );
+  }
+
+  if (name === "fridge") {
+    return (
+      <svg {...shared}>
+        <rect x="8" y="4" width="8" height="16" rx="1.5" />
+        <path d="M8 11h8M14 8h.01M14 14h.01" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...shared}>
+      <circle cx="12" cy="12" r="7" />
+    </svg>
+  );
+}
+
 export default function FloorplanGenerator({
   layout,
   onLayoutChange,
@@ -185,6 +342,7 @@ export default function FloorplanGenerator({
   const [previewFloorId, setPreviewFloorId] = useState(null);
   const [quickToolsOpen, setQuickToolsOpen] = useState(false);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [roomMeasurementDraft, setRoomMeasurementDraft] = useState({ width: "", height: "" });
   const [zoom, setZoom] = useState(1);
   const [snapRotation, setSnapRotation] = useState(true);
   const [hasUserAdjustedZoom, setHasUserAdjustedZoom] = useState(false);
@@ -300,7 +458,19 @@ export default function FloorplanGenerator({
 
   useEffect(() => {
     setPropertiesOpen(false);
-  }, [selectedItem]);
+  }, [selected?.floorId, selected?.id, selected?.type]);
+
+  useEffect(() => {
+    if (selected?.type !== "rooms" || !selectedItem) {
+      setRoomMeasurementDraft({ width: "", height: "" });
+      return;
+    }
+
+    setRoomMeasurementDraft({
+      width: String(selectedRoomWidthMeters),
+      height: String(selectedRoomHeightMeters),
+    });
+  }, [selected?.floorId, selected?.id, selected?.type, selectedItem, selectedRoomWidthMeters, selectedRoomHeightMeters]);
 
   useEffect(() => {
     lastCommittedLayoutRef.current = normalizedLayout;
@@ -315,6 +485,28 @@ export default function FloorplanGenerator({
       window.removeEventListener("orientationchange", onResize);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isFullscreenEditor || typeof document === "undefined") return undefined;
+
+    const { body, documentElement } = document;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyTouchAction = body.style.touchAction;
+    const previousHtmlOverflow = documentElement.style.overflow;
+    const previousHtmlOverscroll = documentElement.style.overscrollBehavior;
+
+    body.style.overflow = "hidden";
+    body.style.touchAction = "none";
+    documentElement.style.overflow = "hidden";
+    documentElement.style.overscrollBehavior = "none";
+
+    return () => {
+      body.style.overflow = previousBodyOverflow;
+      body.style.touchAction = previousBodyTouchAction;
+      documentElement.style.overflow = previousHtmlOverflow;
+      documentElement.style.overscrollBehavior = previousHtmlOverscroll;
+    };
+  }, [isFullscreenEditor]);
 
   const getSnapTargets = (ignoreType, ignoreId) =>
     ["rooms", "doors", "windows", "spaces", "stairs"]
@@ -525,24 +717,28 @@ export default function FloorplanGenerator({
     {
       key: "rooms",
       label: "Room",
+      icon: "room",
       onClick: () => addItem("rooms"),
       className: "bg-zinc-800 text-white",
     },
     {
       key: "doors",
       label: "Door",
+      icon: "door",
       onClick: () => addItem("doors"),
       className: "border border-zinc-200 bg-zinc-50 text-zinc-700",
     },
     {
       key: "windows",
       label: "Window",
+      icon: "window",
       onClick: () => addItem("windows"),
       className: "border border-zinc-200 bg-zinc-50 text-zinc-700",
     },
     {
       key: "stairs",
       label: "Stairs",
+      icon: "stairs",
       onClick: () => addItem("stairs"),
       className: "border border-zinc-200 bg-zinc-50 text-zinc-700",
     },
@@ -552,6 +748,19 @@ export default function FloorplanGenerator({
     group.items.map((item) => ({
       key: `${group.title}-${item.label}`,
       label: item.buttonLabel || item.label,
+      previewLabel: item.label,
+      icon:
+        item.label.includes("Bed") ? "bed" :
+        item.label.includes("Sofa") ? "sofa" :
+        item.label.includes("Table") ? "table" :
+        item.label.includes("Chair") ? "chair" :
+        item.label.includes("Toilet") ? "toilet" :
+        item.label.includes("Sink") ? "sink" :
+        item.label.includes("Bath") || item.label.includes("Shower") ? "bath" :
+        item.label.includes("Cabinet") || item.label.includes("Wardrobe") || item.label.includes("Cupboard") ? "cabinet" :
+        item.label.includes("Oven") || item.label.includes("Hob") ? "oven" :
+        item.label.includes("Fridge") ? "fridge" :
+        "room",
       onClick: () => addLabeledSpace(item.label, item.w, item.h),
     }))
   );
@@ -567,6 +776,7 @@ export default function FloorplanGenerator({
     {
       key: "delete",
       label: "Delete",
+      icon: "delete",
       onClick: removeSelected,
       disabled: !selectedItem,
       className: "bg-red-100 text-red-700 disabled:opacity-50",
@@ -585,6 +795,34 @@ export default function FloorplanGenerator({
           : item
       )
     );
+  };
+
+  const commitSelectedRoomMeasurementDraft = (dimension) => {
+    if (selected?.type !== "rooms" || !selectedItem) return;
+
+    const draftValue = roomMeasurementDraft[dimension];
+    const parsed = Number.parseFloat(draftValue);
+    if (!Number.isFinite(parsed)) {
+      setRoomMeasurementDraft((prev) => ({
+        ...prev,
+        [dimension]: String(dimension === "width" ? selectedRoomWidthMeters : selectedRoomHeightMeters),
+      }));
+      return;
+    }
+
+    const minMeters =
+      dimension === "width"
+        ? Number((getMinSize("rooms").w / PIXELS_PER_METER).toFixed(1))
+        : Number((getMinSize("rooms").h / PIXELS_PER_METER).toFixed(1));
+    const clampedMeters = clamp(parsed, minMeters, 20);
+
+    updateSelected({
+      [dimension === "width" ? "w" : "h"]: clamp(
+        Math.round(clampedMeters * PIXELS_PER_METER),
+        dimension === "width" ? getMinSize("rooms").w : getMinSize("rooms").h,
+        800
+      ),
+    });
   };
 
   const moveSelectedRoomToFloor = (nextFloorId) => {
@@ -1247,7 +1485,7 @@ export default function FloorplanGenerator({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-white">
+    <div className="fixed inset-0 z-50 overscroll-none bg-white">
       <div className="flex h-full flex-col">
         <div className="border-b border-zinc-200 bg-white px-2 py-2">
           <div className="flex items-start justify-between gap-2">
@@ -1385,9 +1623,14 @@ export default function FloorplanGenerator({
                     }}
                     className="rounded-xl border border-zinc-200 bg-zinc-50 px-2 py-3 text-[11px] font-semibold text-zinc-700"
                   >
-                    {tool.label}
-                  </button>
-                ))}
+                  <span className="mb-1 flex justify-center">
+                    <span className="relative h-6 w-8 overflow-hidden">
+                      {renderSpaceSymbol({ label: tool.previewLabel }) || <ToolIcon name={tool.icon} className="h-5 w-5" />}
+                    </span>
+                  </span>
+                  {tool.label}
+                </button>
+              ))}
               </div>
             </div>
           ) : null}
@@ -1457,17 +1700,19 @@ export default function FloorplanGenerator({
                               step="0.1"
                               min={Number((getMinSize("rooms").w / PIXELS_PER_METER).toFixed(1))}
                               max="20"
-                              value={selectedRoomWidthMeters}
-                              onChange={(event) => {
-                                const nextValue = Number.parseFloat(event.target.value);
-                                if (!Number.isFinite(nextValue)) return;
-                                updateSelected({
-                                  w: clamp(
-                                    Math.round(nextValue * PIXELS_PER_METER),
-                                    getMinSize("rooms").w,
-                                    800
-                                  ),
-                                });
+                              value={roomMeasurementDraft.width}
+                              onChange={(event) =>
+                                setRoomMeasurementDraft((prev) => ({
+                                  ...prev,
+                                  width: event.target.value,
+                                }))
+                              }
+                              onBlur={() => commitSelectedRoomMeasurementDraft("width")}
+                              onKeyDown={(event) => {
+                                event.stopPropagation();
+                                if (event.key === "Enter") {
+                                  event.currentTarget.blur();
+                                }
                               }}
                               className="mt-1 h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
                             />
@@ -1479,17 +1724,19 @@ export default function FloorplanGenerator({
                               step="0.1"
                               min={Number((getMinSize("rooms").h / PIXELS_PER_METER).toFixed(1))}
                               max="20"
-                              value={selectedRoomHeightMeters}
-                              onChange={(event) => {
-                                const nextValue = Number.parseFloat(event.target.value);
-                                if (!Number.isFinite(nextValue)) return;
-                                updateSelected({
-                                  h: clamp(
-                                    Math.round(nextValue * PIXELS_PER_METER),
-                                    getMinSize("rooms").h,
-                                    800
-                                  ),
-                                });
+                              value={roomMeasurementDraft.height}
+                              onChange={(event) =>
+                                setRoomMeasurementDraft((prev) => ({
+                                  ...prev,
+                                  height: event.target.value,
+                                }))
+                              }
+                              onBlur={() => commitSelectedRoomMeasurementDraft("height")}
+                              onKeyDown={(event) => {
+                                event.stopPropagation();
+                                if (event.key === "Enter") {
+                                  event.currentTarget.blur();
+                                }
                               }}
                               className="mt-1 h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
                             />
@@ -1557,8 +1804,9 @@ export default function FloorplanGenerator({
                   type="button"
                   onClick={tool.onClick}
                   disabled={tool.disabled}
-                  className={`h-11 rounded-xl px-2 text-[11px] font-semibold ${tool.className || "border border-zinc-200 bg-zinc-50 text-zinc-700"}`}
+                  className={`flex h-11 flex-col items-center justify-center rounded-xl px-2 text-[11px] font-semibold ${tool.className || "border border-zinc-200 bg-zinc-50 text-zinc-700"}`}
                 >
+                  <ToolIcon name={tool.icon} className="mb-0.5 h-4 w-4" />
                   {tool.label}
                 </button>
               ))}
