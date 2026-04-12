@@ -979,12 +979,12 @@ export default function FloorplanGenerator({
       type="button"
       onClick={() => setSelected({ type: "rooms", id: room.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "rooms", room)}
-      className={`absolute box-border rounded-md border-[4px] border-black bg-white px-2 py-1 text-center text-[11px] font-semibold text-zinc-800 transition ${
+      className={`absolute box-border select-none rounded-md border-[4px] border-black bg-white px-2 py-1 text-center text-[11px] font-semibold text-zinc-800 transition ${
         selected?.floorId === activeFloor.id && selected?.type === "rooms" && selected?.id === room.id
           ? selectedStyle
           : ""
       }`}
-      style={getItemStyle(room)}
+      style={{ ...getItemStyle(room), userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
     >
       <span className="block truncate">{room.name}</span>
       <span className="block text-[10px] font-medium text-zinc-500">
@@ -1001,12 +1001,12 @@ export default function FloorplanGenerator({
       type="button"
       onClick={() => setSelected({ type: "doors", id: door.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "doors", door)}
-      className={`absolute box-border rounded-none bg-transparent ${
+      className={`absolute box-border select-none rounded-none bg-transparent ${
         selected?.floorId === activeFloor.id && selected?.type === "doors" && selected?.id === door.id
           ? selectedStyle
           : ""
       }`}
-      style={getItemStyle(door)}
+      style={{ ...getItemStyle(door), userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
       title={door.label || "Door"}
     >
       <svg
@@ -1014,19 +1014,25 @@ export default function FloorplanGenerator({
         className="pointer-events-none h-full w-full"
       >
         <rect
-          x="1"
-          y={Math.max(door.h, 20) - 5}
-          width={Math.max(door.w, 24) - 2}
-          height="6"
-          fill="#fff"
+          x="4"
+          y={Math.max(door.h, 20) - 8}
+          width={Math.max(door.w, 24) - 8}
+          height="8"
+          fill="#ffffff"
         />
-        <line
-          x1="2"
-          y1={Math.max(door.h, 20) - 2}
-          x2={Math.max(door.w, 24) - 2}
-          y2={Math.max(door.h, 20) - 2}
-          stroke="#111"
-          strokeWidth="1.2"
+        <rect
+          x="1"
+          y={Math.max(door.h, 20) - 7}
+          width="5"
+          height="7"
+          fill="#111"
+        />
+        <rect
+          x={Math.max(door.w, 24) - 6}
+          y={Math.max(door.h, 20) - 7}
+          width="5"
+          height="7"
+          fill="#111"
         />
         <line
           x1={door.flip ? Math.max(door.w, 24) - 2 : 2}
@@ -1067,14 +1073,14 @@ export default function FloorplanGenerator({
         setSelected({ type: "windows", id: windowItem.id, floorId: activeFloor.id })
       }
       onPointerDown={(event) => startMoveDrag(event, "windows", windowItem)}
-      className={`absolute box-border rounded-[1px] border-[3px] border-black bg-white ${
+      className={`absolute box-border select-none rounded-[1px] border-[3px] border-black bg-white ${
         selected?.floorId === activeFloor.id &&
         selected?.type === "windows" &&
         selected?.id === windowItem.id
           ? selectedStyle
           : ""
       }`}
-      style={getItemStyle(windowItem)}
+      style={{ ...getItemStyle(windowItem), userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
       title={windowItem.label || "Window"}
     >
       <span className="pointer-events-none absolute inset-y-[1px] left-[33%] w-px bg-black" />
@@ -1090,7 +1096,7 @@ export default function FloorplanGenerator({
       type="button"
       onClick={() => setSelected({ type: "spaces", id: item.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "spaces", item)}
-      className={`absolute box-border rounded ${
+      className={`absolute box-border select-none rounded ${
         hasSpaceSymbol(item)
           ? "border-2 border-zinc-700 bg-white"
           : "border border-dashed border-zinc-500 bg-zinc-100/80"
@@ -1099,7 +1105,7 @@ export default function FloorplanGenerator({
           ? selectedStyle
           : ""
       }`}
-      style={getItemStyle(item)}
+      style={{ ...getItemStyle(item), userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
     >
       {renderSpaceSymbol(item)}
       <span className="absolute bottom-0.5 left-0 right-0 block truncate px-1 text-center">
@@ -1116,12 +1122,12 @@ export default function FloorplanGenerator({
       type="button"
       onClick={() => setSelected({ type: "stairs", id: item.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "stairs", item)}
-      className={`absolute box-border rounded border border-zinc-700 bg-white text-[10px] font-semibold text-zinc-800 ${
+      className={`absolute box-border select-none rounded border border-zinc-700 bg-white text-[10px] font-semibold text-zinc-800 ${
         selected?.floorId === activeFloor.id && selected?.type === "stairs" && selected?.id === item.id
           ? selectedStyle
           : ""
       }`}
-      style={getItemStyle(item)}
+      style={{ ...getItemStyle(item), userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
       title={item.label || "Stairs"}
     >
       <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 h-full w-full">
@@ -1182,6 +1188,9 @@ export default function FloorplanGenerator({
                 height: CANVAS_HEIGHT,
                 transform: `scale(${scale})`,
                 touchAction: preview ? "auto" : dragging ? "none" : "pan-y pinch-zoom",
+                userSelect: "none",
+                WebkitUserSelect: "none",
+                WebkitTouchCallout: "none",
               }}
             >
               {(floor.rooms || []).map(renderRoom)}
