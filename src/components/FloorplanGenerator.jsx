@@ -198,6 +198,7 @@ export default function FloorplanGenerator({
   const canvasRef = useRef(null);
   const viewportRef = useRef(null);
   const pinchStateRef = useRef({ startDistance: null, startZoom: 1 });
+  const pendingHoldRef = useRef(null);
   const undoStackRef = useRef([]);
   const lastCommittedLayoutRef = useRef(null);
 
@@ -254,16 +255,37 @@ export default function FloorplanGenerator({
   }, []);
 
   useEffect(() => {
-    const clearDrag = () => setDragging(null);
+    const clearDrag = () => {
+      setDragging(null);
+      if (pendingHoldRef.current?.timer) clearTimeout(pendingHoldRef.current.timer);
+      pendingHoldRef.current = null;
+    };
     window.addEventListener("pointerup", clearDrag);
     window.addEventListener("touchend", clearDrag);
     window.addEventListener("touchcancel", clearDrag);
+    window.addEventListener("pointercancel", clearDrag);
     return () => {
       window.removeEventListener("pointerup", clearDrag);
       window.removeEventListener("touchend", clearDrag);
       window.removeEventListener("touchcancel", clearDrag);
+      window.removeEventListener("pointercancel", clearDrag);
     };
   }, []);
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      const pending = pendingHoldRef.current;
+      if (!pending || pending.pointerId !== event.pointerId || dragging) return;
+      const deltaX = event.clientX - pending.startClientX;
+      const deltaY = event.clientY - pending.startClientY;
+      if (Math.sqrt(deltaX * deltaX + deltaY * deltaY) > 10) {
+        clearTimeout(pending.timer);
+        pendingHoldRef.current = null;
+      }
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    return () => window.removeEventListener("pointermove", handlePointerMove);
+  }, [dragging]);
 
   useEffect(() => {
     if (!floors.length) {
@@ -450,6 +472,7 @@ export default function FloorplanGenerator({
         h: 24,
         label: "Door",
         angle: 0,
+        flip: false,
       },
       windows: {
         id,
@@ -633,7 +656,7 @@ export default function FloorplanGenerator({
     };
   };
 
-  const startMoveDrag = (event, type, item) => {
+  const beginMoveDrag = (event, type, item) => {
     event.preventDefault();
     event.stopPropagation();
 
@@ -650,6 +673,28 @@ export default function FloorplanGenerator({
       itemWidth: item.w,
       itemHeight: item.h,
     });
+  };
+
+  const startMoveDrag = (event, type, item) => {
+    setSelected({ type, id: item.id, floorId: activeFloor.id });
+
+    if (event.pointerType === "touch") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (pendingHoldRef.current?.timer) clearTimeout(pendingHoldRef.current.timer);
+      pendingHoldRef.current = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        timer: setTimeout(() => {
+          beginMoveDrag(event, type, item);
+          pendingHoldRef.current = null;
+        }, 180),
+      };
+      return;
+    }
+
+    beginMoveDrag(event, type, item);
   };
 
   const startResizeDrag = (event, type, item) => {
@@ -752,6 +797,8 @@ export default function FloorplanGenerator({
   };
 
   const stopDrag = () => {
+    if (pendingHoldRef.current?.timer) clearTimeout(pendingHoldRef.current.timer);
+    pendingHoldRef.current = null;
     if (!dragging) return;
     setDragging(null);
   };
@@ -982,18 +1029,25 @@ export default function FloorplanGenerator({
           strokeWidth="1.2"
         />
         <line
-          x1="2"
+          x1={door.flip ? Math.max(door.w, 24) - 2 : 2}
           y1={Math.max(door.h, 20) - 2}
-          x2={Math.max(door.w, 24) - 2}
+          x2={door.flip ? 2 : Math.max(door.w, 24) - 2}
           y2="4"
           stroke="#222"
           strokeWidth="1.4"
         />
         <path
-          d={`M 2 ${Math.max(door.h, 20) - 2} A ${Math.max(door.w, 24) - 4} ${Math.max(
-            door.h,
-            20
-          ) - 6} 0 0 1 ${Math.max(door.w, 24) - 2} 4`}
+          d={
+            door.flip
+              ? `M ${Math.max(door.w, 24) - 2} ${Math.max(door.h, 20) - 2} A ${Math.max(door.w, 24) - 4} ${Math.max(
+                  door.h,
+                  20
+                ) - 6} 0 0 0 2 4`
+              : `M 2 ${Math.max(door.h, 20) - 2} A ${Math.max(door.w, 24) - 4} ${Math.max(
+                  door.h,
+                  20
+                ) - 6} 0 0 1 ${Math.max(door.w, 24) - 2} 4`
+          }
           fill="none"
           stroke="#666"
           strokeDasharray="2 2"
@@ -1062,7 +1116,7 @@ export default function FloorplanGenerator({
       type="button"
       onClick={() => setSelected({ type: "stairs", id: item.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "stairs", item)}
-      className={`absolute box-border rounded border border-zinc-700 bg-zinc-200 text-[10px] font-semibold text-zinc-800 ${
+      className={`absolute box-border rounded border border-zinc-700 bg-white text-[10px] font-semibold text-zinc-800 ${
         selected?.floorId === activeFloor.id && selected?.type === "stairs" && selected?.id === item.id
           ? selectedStyle
           : ""
@@ -1070,7 +1124,19 @@ export default function FloorplanGenerator({
       style={getItemStyle(item)}
       title={item.label || "Stairs"}
     >
-      <span className="block truncate px-1">{item.label || "Stairs"}</span>
+      <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 h-full w-full">
+        {[12, 28, 44, 60, 76].map((stepX, index) => (
+          <path
+            key={`step-${item.id}-${stepX}`}
+            d={`M ${stepX} 82 L ${stepX} ${20 + index * 10} L ${stepX + 12} ${20 + index * 10}`}
+            fill="none"
+            stroke="#111"
+            strokeWidth="4"
+            strokeLinecap="round"
+          />
+        ))}
+      </svg>
+      <span className="absolute bottom-1 left-0 right-0 block truncate px-1 text-center">{item.label || "Stairs"}</span>
       {renderResizeHandle("stairs", item)}
       {renderRotateHandle("stairs", item)}
     </button>
@@ -1081,9 +1147,9 @@ export default function FloorplanGenerator({
     return (
       <div
         ref={preview ? undefined : viewportRef}
-        className={`overflow-hidden rounded-lg border border-zinc-300 bg-white ${className}`}
+        className={`overflow-hidden rounded-lg border-2 border-zinc-400 bg-white shadow-inner ${className}`}
       >
-        <div className="h-full w-full bg-zinc-50">
+        <div className="h-full w-full bg-zinc-100">
           <div
             style={{
               width: CANVAS_WIDTH * scale,
@@ -1110,7 +1176,7 @@ export default function FloorplanGenerator({
               onTouchStart={preview ? undefined : onCanvasTouchStart}
               onTouchMove={preview ? undefined : onCanvasTouchMove}
               onTouchEnd={preview ? undefined : onCanvasTouchEnd}
-              className={`relative origin-top-left bg-zinc-50 ${preview ? "pointer-events-none" : ""}`}
+              className={`relative origin-top-left border-2 border-dashed border-zinc-400 bg-zinc-50 ${preview ? "pointer-events-none" : ""}`}
               style={{
                 width: CANVAS_WIDTH,
                 height: CANVAS_HEIGHT,
@@ -1320,8 +1386,8 @@ export default function FloorplanGenerator({
           {selectedItem ? (
             <div
               className={`absolute z-10 ${
-                isLandscape ? "right-2 top-2 w-[300px]" : "left-2 right-2 top-2"
-              }`}
+                isLandscape ? "left-1/2 w-[420px] max-w-[calc(100%-16px)] -translate-x-1/2" : "left-2 right-2"
+              } bottom-[124px]`}
             >
               <div className="rounded-2xl border border-zinc-200 bg-white/98 p-3 shadow-lg backdrop-blur">
                 <div className="flex items-center justify-between gap-2">
@@ -1457,6 +1523,15 @@ export default function FloorplanGenerator({
                             className="h-9 rounded-xl border border-zinc-300 px-2 text-sm"
                           />
                         ))}
+                        {selected?.type === "doors" ? (
+                          <button
+                            type="button"
+                            onClick={() => updateSelected({ flip: !selectedItem.flip })}
+                            className="col-span-3 h-10 rounded-xl border border-zinc-300 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700"
+                          >
+                            {selectedItem.flip ? "Flip Door Back" : "Flip Door Opening"}
+                          </button>
+                        ) : null}
                       </div>
                     )}
                   </>

@@ -49,6 +49,13 @@ export default function InventoryRoom({
       </div>
 
       <div className="mt-3 space-y-2">
+        <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-2">
+          <p className="text-[11px] font-semibold text-zinc-700">Panorama Guide</p>
+          <p className="mt-1 text-[11px] text-zinc-500">
+            Use `Add Panorama` to choose camera or photo library. For best results, stand in the doorway or centre
+            of the room and upload a wide panoramic image that shows as much of the space as possible.
+          </p>
+        </div>
         <MediaUploader onCapturePanorama={onCapturePanorama} onCaptureDetailPhoto={onCaptureDetailPhoto} />
         {roomInventory.visuallyDocumented ? (
           <p className="text-[11px] font-medium text-emerald-700">Visually documented</p>
