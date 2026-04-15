@@ -41,6 +41,9 @@ export default function FloorPlan({ rooms, breakers, fuseById, floorNameById = {
               <p className="mb-1 text-[11px] text-zinc-500">
                 {floorNameById[room.floorId] || "Unassigned Floor"}
               </p>
+              <p className="mb-1 text-[11px] font-medium text-zinc-600">
+                Approx size: {room.widthMeters || 4}m x {room.heightMeters || 3}m
+              </p>
 
               <p className="text-xs text-zinc-700">
                 Lights: {lightsFuse ? (lightsOn ? "Powered" : "No power") : "Not assigned"}
