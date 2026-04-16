@@ -46,6 +46,11 @@ function getImageFormat(dataUrl, fallback = "JPEG") {
   return fallback;
 }
 
+function formatInventoryCondition(value) {
+  if (!value || value === "na") return "Not stated / N/A";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function addContainedImage(doc, imageData, x, y, maxWidth, maxHeight, fallbackFormat = "JPEG", align = "center") {
   const imageFormat = getImageFormat(imageData, fallbackFormat);
   const props = doc.getImageProperties(imageData);
@@ -66,6 +71,69 @@ function addContainedImage(doc, imageData, x, y, maxWidth, maxHeight, fallbackFo
     width: drawWidth,
     height: drawHeight,
   };
+}
+
+function drawInventoryMediaGrid(doc, mediaItems, startY, roomName, overallCondition, primaryRgb) {
+  const marginX = 14;
+  const columns = 3;
+  const rowsPerPage = 3;
+  const pageSize = columns * rowsPerPage;
+  const gapX = 6;
+  const gapY = 10;
+  const cellWidth = 58;
+  const imageHeight = 38;
+  const cellHeight = imageHeight + 10;
+  const labelOffsetY = imageHeight + 4;
+  let pageStartY = startY;
+
+  mediaItems.forEach((media, index) => {
+    if (index > 0 && index % pageSize === 0) {
+      doc.addPage();
+      pageStartY = 20;
+    }
+
+    if (index % pageSize === 0) {
+      doc.setFontSize(11);
+      doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+      const heading = index === 0 ? "Inventory Media" : "Inventory Media (continued)";
+      doc.text(`${heading}: ${roomName}`, marginX, pageStartY);
+      doc.setFontSize(9);
+      doc.setTextColor(70, 70, 70);
+      doc.text(`Overall condition: ${formatInventoryCondition(overallCondition)}`, marginX, pageStartY + 4);
+      pageStartY += 8;
+    }
+
+    const pageIndex = index % pageSize;
+    const row = Math.floor(pageIndex / columns);
+    const column = pageIndex % columns;
+    const x = marginX + (cellWidth + gapX) * column;
+    const y = pageStartY + row * (cellHeight + gapY);
+
+    if (media.preview || media.url?.startsWith("data:image")) {
+      try {
+        const imageData = media.preview || media.url;
+        addContainedImage(doc, imageData, x, y, cellWidth, imageHeight);
+      } catch {
+        doc.setTextColor(90, 90, 90);
+        doc.text("Image unavailable", x, y + 12, { maxWidth: cellWidth });
+      }
+    } else {
+      doc.setTextColor(90, 90, 90);
+      doc.text("Image unavailable", x, y + 12, { maxWidth: cellWidth });
+    }
+
+    doc.setFontSize(8);
+    doc.setTextColor(90, 90, 90);
+    doc.text(media.type === "pano" ? "Panorama" : "Photo", x, y + labelOffsetY, { maxWidth: cellWidth });
+    if (media.type === "pano") {
+      doc.text("360 panorama captured", x, y + labelOffsetY + 4, { maxWidth: cellWidth });
+    }
+    if (media.assignment) {
+      doc.text(`Assigned: ${media.assignment}`, x, y + labelOffsetY + (media.type === "pano" ? 8 : 4), {
+        maxWidth: cellWidth,
+      });
+    }
+  });
 }
 
 const HOME_PRESETS = [
@@ -2478,41 +2546,16 @@ function HomeScreen({
           doc.addPage();
           currentY = 20;
         }
-        doc.setFontSize(11);
-        doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-        doc.text(`Inventory Media: ${roomName}`, 14, currentY);
-        currentY += 4;
-        doc.setFontSize(9);
-        doc.setTextColor(70, 70, 70);
-        doc.text(
-          `Overall condition: ${formatInventoryCondition(roomInventory.overallCondition)}`,
-          14,
-          currentY
-        );
-        currentY += 4;
 
-        mediaItems.slice(0, 3).forEach((media) => {
-          if (currentY > 230) {
-            doc.addPage();
-            currentY = 20;
-          }
-          if (media.preview || media.url?.startsWith("data:image")) {
-            try {
-              const imageData = media.preview || media.url;
-              addContainedImage(doc, imageData, 14, currentY, 78, 44);
-            } catch {
-              doc.text("Image unavailable", 14, currentY + 4);
-            }
-          }
-          doc.setTextColor(90, 90, 90);
-          doc.setFontSize(8);
-          doc.text(media.type === "pano" ? "Panorama" : "Photo", 96, currentY + 5);
-          if (media.type === "pano") {
-            doc.text("360 panorama captured", 96, currentY + 10, { maxWidth: 95 });
-          }
-          currentY += 48;
-        });
-        currentY += 2;
+        drawInventoryMediaGrid(
+          doc,
+          mediaItems,
+          currentY,
+          roomName,
+          roomInventory.overallCondition,
+          primaryRgb
+        );
+        currentY = 20;
       });
     }
 

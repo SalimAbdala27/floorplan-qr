@@ -54,66 +54,78 @@ export default function MediaUploader({ onCapturePanorama, onCaptureDetailPhoto 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleFile = async (file, mode = "pano") => {
-    if (!file) return;
+  const handleFiles = async (files, mode = "pano") => {
+    const selectedFiles = Array.from(files || []).filter(Boolean);
+    if (!selectedFiles.length) return;
 
-    try {
-      setUploading(true);
-      setError("");
-      const sourceDataUrl = await readFileAsDataUrl(file);
-      await loadImageMeta(sourceDataUrl);
-      const imageEl = await loadImageElement(sourceDataUrl);
-      const compressedDataUrl =
-        compressDataUrl(imageEl, mode === "pano" ? 2200 : 1600, mode === "pano" ? 0.68 : 0.74) || sourceDataUrl;
+    setUploading(true);
+    setError("");
 
-      const media = {
-        id: `media_${Date.now()}`,
-        type: mode === "pano" ? "pano" : "photo",
-        url: compressedDataUrl,
-        preview: compressedDataUrl,
-        originalUrl: sourceDataUrl,
-        fileName: file.name || `${mode === "pano" ? "panorama" : "photo"}_${Date.now()}.jpg`,
-        mimeType: file.type || "image/jpeg",
-      };
+    let failedFile = null;
 
-      if (mode === "pano") {
-        onCapturePanorama(media);
-      } else if (onCaptureDetailPhoto) {
-        onCaptureDetailPhoto(media);
+    for (const file of selectedFiles) {
+      try {
+        const sourceDataUrl = await readFileAsDataUrl(file);
+        await loadImageMeta(sourceDataUrl);
+        const imageEl = await loadImageElement(sourceDataUrl);
+        const compressedDataUrl =
+          compressDataUrl(imageEl, mode === "pano" ? 2200 : 1600, mode === "pano" ? 0.68 : 0.74) || sourceDataUrl;
+
+        const media = {
+          id: `media_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          type: mode === "pano" ? "pano" : "photo",
+          url: compressedDataUrl,
+          preview: compressedDataUrl,
+          originalUrl: sourceDataUrl,
+          fileName: file.name || `${mode === "pano" ? "panorama" : "photo"}_${Date.now()}.jpg`,
+          mimeType: file.type || "image/jpeg",
+        };
+
+        if (mode === "pano") {
+          onCapturePanorama(media);
+        } else if (onCaptureDetailPhoto) {
+          onCaptureDetailPhoto(media);
+        }
+      } catch {
+        failedFile = file;
       }
-    } catch {
-      setError(
-        isHeifLikeFile(file)
-          ? "This device/browser could not read that HEIF/HEIC image. Convert it to JPG or PNG, or try uploading it from Safari/iPhone Photos."
-          : "That image could not be read. Try a JPG or PNG file."
-      );
-    } finally {
-      setUploading(false);
     }
+
+    if (failedFile) {
+      setError(
+        isHeifLikeFile(failedFile)
+          ? "One or more HEIF/HEIC images could not be read. Convert them to JPG or PNG, or try uploading them from Safari/iPhone Photos."
+          : "One or more images could not be read. Try JPG or PNG files."
+      );
+    }
+
+    setUploading(false);
   };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <label className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white flex items-center cursor-pointer">
-        {uploading ? "Adding panorama..." : "Add Panorama"}
+        {uploading ? "Adding panoramas..." : "Add Panorama"}
         <input
           type="file"
+          multiple
           accept={IMAGE_ACCEPT}
           className="hidden"
           onChange={(event) => {
-            handleFile(event.target.files?.[0], "pano");
+            handleFiles(event.target.files, "pano");
             event.target.value = "";
           }}
         />
       </label>
       <label className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700 flex items-center cursor-pointer">
-        {uploading ? "Adding detail..." : "Add Photo"}
+        {uploading ? "Adding photos..." : "Add Photo"}
         <input
           type="file"
+          multiple
           accept={IMAGE_ACCEPT}
           className="hidden"
           onChange={(event) => {
-            handleFile(event.target.files?.[0], "detail");
+            handleFiles(event.target.files, "detail");
             event.target.value = "";
           }}
         />

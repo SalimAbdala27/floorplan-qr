@@ -49,6 +49,107 @@ function addContainedImage(doc, imageData, x, y, maxWidth, maxHeight, fallbackFo
   };
 }
 
+function drawRoomMediaGrid(doc, mediaItems, startY, roomName, overallCondition) {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 14;
+  const bottomMargin = 14;
+  const columns = 3;
+  const rowsPerPage = 3;
+  const pageSize = columns * rowsPerPage;
+  const gapX = 6;
+  const gapY = 10;
+  const cellWidth = 58;
+  const imageHeight = 38;
+  const cellHeight = imageHeight + 10;
+  const labelOffsetY = imageHeight + 4;
+  let pageStartY = startY;
+
+  mediaItems.forEach((media, index) => {
+    if (index > 0 && index % pageSize === 0) {
+      doc.addPage();
+      pageStartY = 18;
+    }
+
+    if (index % pageSize === 0) {
+      doc.setFontSize(11);
+      doc.setTextColor(40, 40, 40);
+      const heading = index === 0 ? "Room media" : `Room media (continued)`;
+      doc.text(`${heading}: ${roomName}`, marginX, pageStartY);
+      doc.setFontSize(9);
+      doc.setTextColor(90, 90, 90);
+      doc.text(`Overall condition: ${formatCondition(overallCondition)}`, marginX, pageStartY + 5);
+      pageStartY += 10;
+    }
+
+    const pageIndex = index % pageSize;
+    const row = Math.floor(pageIndex / columns);
+    const column = pageIndex % columns;
+    const x = marginX + (cellWidth + gapX) * column;
+    const y = pageStartY + row * (cellHeight + gapY);
+
+    if (y + cellHeight > pageHeight - bottomMargin) {
+      doc.addPage();
+      pageStartY = 18;
+      doc.setFontSize(11);
+      doc.setTextColor(40, 40, 40);
+      doc.text(`Room media (continued): ${roomName}`, marginX, pageStartY);
+      doc.setFontSize(9);
+      doc.setTextColor(90, 90, 90);
+      doc.text(`Overall condition: ${formatCondition(overallCondition)}`, marginX, pageStartY + 5);
+      const continuedY = pageStartY + 10;
+      const continuedRow = 0;
+      const continuedColumn = 0;
+      const continuedX = marginX + (cellWidth + gapX) * continuedColumn;
+      const continuedCellY = continuedY + continuedRow * (cellHeight + gapY);
+
+      if (media.preview || media.url?.startsWith("data:image")) {
+        try {
+          const imageData = media.preview || media.url;
+          addContainedImage(doc, imageData, continuedX, continuedCellY, cellWidth, imageHeight);
+        } catch {
+          doc.setTextColor(90, 90, 90);
+          doc.text("Image preview unavailable", continuedX, continuedCellY + 12, { maxWidth: cellWidth });
+        }
+      } else {
+        doc.setTextColor(90, 90, 90);
+        doc.text("Image preview unavailable", continuedX, continuedCellY + 12, { maxWidth: cellWidth });
+      }
+
+      doc.setFontSize(8);
+      doc.setTextColor(90, 90, 90);
+      doc.text(media.type === "pano" ? "Panorama" : "Photo", continuedX, continuedCellY + labelOffsetY, {
+        maxWidth: cellWidth,
+      });
+      if (media.assignment) {
+        doc.text(`Assigned: ${media.assignment}`, continuedX, continuedCellY + labelOffsetY + 4, {
+          maxWidth: cellWidth,
+        });
+      }
+      return;
+    }
+
+    if (media.preview || media.url?.startsWith("data:image")) {
+      try {
+        const imageData = media.preview || media.url;
+        addContainedImage(doc, imageData, x, y, cellWidth, imageHeight);
+      } catch {
+        doc.setTextColor(90, 90, 90);
+        doc.text("Image preview unavailable", x, y + 12, { maxWidth: cellWidth });
+      }
+    } else {
+      doc.setTextColor(90, 90, 90);
+      doc.text("Image preview unavailable", x, y + 12, { maxWidth: cellWidth });
+    }
+
+    doc.setFontSize(8);
+    doc.setTextColor(90, 90, 90);
+    doc.text(media.type === "pano" ? "Panorama" : "Photo", x, y + labelOffsetY, { maxWidth: cellWidth });
+    if (media.assignment) {
+      doc.text(`Assigned: ${media.assignment}`, x, y + labelOffsetY + 4, { maxWidth: cellWidth });
+    }
+  });
+}
+
 export function generateInventoryPdf(report, roomsById, propertyName = "Property", options = {}) {
   const branding = options.branding || {};
   const doc = new jsPDF();
@@ -145,40 +246,7 @@ export function generateInventoryPdf(report, roomsById, propertyName = "Property
       return;
     }
 
-    roomInventory.media.slice(0, 3).forEach((media) => {
-      if (y > 250) {
-        doc.addPage();
-        y = 18;
-      }
-
-      doc.setFontSize(9);
-      doc.text(media.type === "pano" ? "Panorama" : "Photo", 14, y);
-      y += 4;
-
-      if (media.preview || media.url?.startsWith("data:image")) {
-        try {
-          const imageData = media.preview || media.url;
-          addContainedImage(doc, imageData, 14, y, 90, 50);
-        } catch {
-          doc.text("Image preview unavailable", 14, y + 4);
-        }
-      }
-
-      if (media.type === "pano") {
-        doc.setTextColor(80, 80, 80);
-        doc.text("360 panorama captured", 110, y + 6, { maxWidth: 85 });
-        doc.setTextColor(0, 0, 0);
-      }
-      if (media.assignment) {
-        doc.setTextColor(80, 80, 80);
-        doc.text(`Assigned to: ${media.assignment}`, 110, y + (media.type === "pano" ? 12 : 6), {
-          maxWidth: 85,
-        });
-        doc.setTextColor(0, 0, 0);
-      }
-
-      y += 56;
-    });
+    drawRoomMediaGrid(doc, roomInventory.media, y, roomName, roomInventory.overallCondition);
   });
 
   doc.save(`${propertyName.toLowerCase().replace(/\s+/g, "_")}_inventory_report.pdf`);
