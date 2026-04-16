@@ -156,6 +156,7 @@ export function generateInventoryPdf(report, roomsById, propertyName = "Property
   const now = new Date().toLocaleString();
   const primaryRgb = hexToRgb(branding.primaryColor, [31, 41, 55]);
   const accentRgb = hexToRgb(branding.accentColor, [226, 232, 240]);
+  let summaryRendered = false;
 
   if (branding.logoDataUrl) {
     try {
@@ -178,6 +179,7 @@ export function generateInventoryPdf(report, roomsById, propertyName = "Property
   let y = branding.companyName ? 34 : 30;
 
   if (report.summary || report.checks || report.additionalNotes || report.conductedBy) {
+    summaryRendered = true;
     autoTable(doc, {
       startY: y,
       head: [["Summary", "Status"]],
@@ -207,7 +209,7 @@ export function generateInventoryPdf(report, roomsById, propertyName = "Property
   }
 
   report.rooms.forEach((roomInventory, index) => {
-    if (index > 0) {
+    if ((index === 0 && summaryRendered) || index > 0) {
       doc.addPage();
       y = 18;
     }

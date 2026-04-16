@@ -2542,10 +2542,8 @@ function HomeScreen({
         const mediaItems = roomInventory.media || [];
         if (!mediaItems.length) return;
 
-        if (currentY > 215) {
-          doc.addPage();
-          currentY = 20;
-        }
+        doc.addPage();
+        currentY = 20;
 
         drawInventoryMediaGrid(
           doc,
