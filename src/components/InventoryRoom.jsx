@@ -3,6 +3,22 @@ import InventoryChecklist from "./InventoryChecklist.jsx";
 import MediaUploader from "./MediaUploader.jsx";
 import PanoViewer from "./PanoViewer.jsx";
 
+const MEDIA_ASSIGNMENT_OPTIONS = [
+  "Overall Room",
+  "Walls",
+  "Ceilings",
+  "Floor",
+  "Furniture",
+  "Doors",
+  "Windows",
+  "Lights",
+  "Decor",
+  "Appliances",
+  "Sockets & Switches",
+  "Radiators",
+  "Paintwork",
+];
+
 export default function InventoryRoom({
   room,
   roomInventory,
@@ -12,6 +28,7 @@ export default function InventoryRoom({
   onCapturePanorama,
   onCaptureDetailPhoto,
   onApplyQuickCondition,
+  onUpdateMedia,
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const primaryPanoSrc = useMemo(
@@ -22,6 +39,10 @@ export default function InventoryRoom({
       "",
     [roomInventory.panoramaImage, roomInventory.media]
   );
+  const assignmentOptions = useMemo(() => {
+    const roomItemNames = (roomInventory.items || []).map((item) => item.name).filter(Boolean);
+    return Array.from(new Set([...MEDIA_ASSIGNMENT_OPTIONS, ...roomItemNames]));
+  }, [roomInventory.items]);
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
@@ -121,6 +142,21 @@ export default function InventoryRoom({
                 className="h-28 w-full rounded border border-zinc-200 object-cover"
               />
             )}
+            <div className="mt-2">
+              <p className="text-[11px] font-semibold text-zinc-700">Assign image to</p>
+              <select
+                value={media.assignment || ""}
+                onChange={(event) => onUpdateMedia?.(media.id, { assignment: event.target.value })}
+                className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs"
+              >
+                <option value="">Unassigned</option>
+                {assignmentOptions.map((option) => (
+                  <option key={`${media.id}-${option}`} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button
               type="button"
               onClick={() => onRemoveMedia(media.id)}

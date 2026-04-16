@@ -16,6 +16,13 @@ function formatCondition(value) {
   return String(value).charAt(0).toUpperCase() + String(value).slice(1);
 }
 
+function formatLabel(value) {
+  if (!value) return "Not stated";
+  return String(value)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function getImageFormat(dataUrl, fallback = "JPEG") {
   const value = String(dataUrl || "").toLowerCase();
   if (value.startsWith("data:image/png")) return "PNG";
@@ -68,6 +75,35 @@ export function generateInventoryPdf(report, roomsById, propertyName = "Property
   }
 
   let y = branding.companyName ? 34 : 30;
+
+  if (report.summary || report.checks || report.additionalNotes || report.conductedBy) {
+    autoTable(doc, {
+      startY: y,
+      head: [["Summary", "Status"]],
+      body: [
+        ["Cleanliness", formatLabel(report.summary?.cleanliness)],
+        ["Smells", formatLabel(report.summary?.smells)],
+        ["Tidiness", formatLabel(report.summary?.tidiness)],
+        ["Bins", formatLabel(report.summary?.bins)],
+        ["Furniture", formatLabel(report.summary?.furniture)],
+        ["Appliances", formatLabel(report.summary?.appliances)],
+        ["Fire/smoke alarms test", formatLabel(report.checks?.fireSmokeAlarms)],
+        ["Hot water", formatLabel(report.checks?.hotWater)],
+        ["Ventilation", formatLabel(report.checks?.ventilation)],
+        ["Gas smell", formatLabel(report.checks?.gasSmell)],
+        ["Report conducted by", report.conductedBy || "Not stated"],
+        ["Additional notes", report.additionalNotes || "None"],
+      ],
+      styles: { fontSize: 9, cellPadding: 2, valign: "top" },
+      headStyles: { fillColor: primaryRgb },
+      alternateRowStyles: { fillColor: accentRgb },
+      columnStyles: {
+        0: { cellWidth: 56 },
+        1: { cellWidth: 120 },
+      },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
 
   report.rooms.forEach((roomInventory, index) => {
     if (index > 0) {
@@ -131,6 +167,13 @@ export function generateInventoryPdf(report, roomsById, propertyName = "Property
       if (media.type === "pano") {
         doc.setTextColor(80, 80, 80);
         doc.text("360 panorama captured", 110, y + 6, { maxWidth: 85 });
+        doc.setTextColor(0, 0, 0);
+      }
+      if (media.assignment) {
+        doc.setTextColor(80, 80, 80);
+        doc.text(`Assigned to: ${media.assignment}`, 110, y + (media.type === "pano" ? 12 : 6), {
+          maxWidth: 85,
+        });
         doc.setTextColor(0, 0, 0);
       }
 

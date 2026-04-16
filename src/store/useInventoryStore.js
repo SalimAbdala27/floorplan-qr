@@ -3,6 +3,8 @@ import { useSyncExternalStore } from "react";
 const DEFAULT_ITEMS = ["Walls", "Floor", "Ceiling", "Windows", "Doors", "Furniture"];
 const DETAIL_CONDITIONS = ["good", "fair", "poor", "na"];
 const QUICK_CONDITIONS = ["good", "fair", "poor"];
+const SUMMARY_KEYS = ["cleanliness", "smells", "tidiness", "bins", "furniture", "appliances"];
+const CHECK_KEYS = ["fireSmokeAlarms", "hotWater", "ventilation", "gasSmell"];
 
 let state = {
   currentReport: null,
@@ -43,6 +45,20 @@ function createDefaultRoomInventory(roomId) {
     visuallyDocumented: false,
     overallCondition: "na",
   };
+}
+
+function createDefaultSummary() {
+  return SUMMARY_KEYS.reduce((acc, key) => {
+    acc[key] = "";
+    return acc;
+  }, {});
+}
+
+function createDefaultChecks() {
+  return CHECK_KEYS.reduce((acc, key) => {
+    acc[key] = "";
+    return acc;
+  }, {});
 }
 
 function mergeRoomInventory(defaultRoom, existingRoom) {
@@ -105,6 +121,16 @@ export function initializeInventoryReport(propertyId, rooms, existingReport) {
   const report = {
     propertyId,
     createdAt: existingReport?.createdAt || new Date().toISOString(),
+    summary: {
+      ...createDefaultSummary(),
+      ...(existingReport?.summary || {}),
+    },
+    checks: {
+      ...createDefaultChecks(),
+      ...(existingReport?.checks || {}),
+    },
+    additionalNotes: typeof existingReport?.additionalNotes === "string" ? existingReport.additionalNotes : "",
+    conductedBy: typeof existingReport?.conductedBy === "string" ? existingReport.conductedBy : "",
     rooms: roomList.map((room) =>
       mergeRoomInventory(createDefaultRoomInventory(room.id), existingRoomsById.get(room.id))
     ),
@@ -119,6 +145,42 @@ export function initializeInventoryReport(propertyId, rooms, existingReport) {
 
 export function setActiveRoom(roomId) {
   setState({ activeRoomId: roomId });
+}
+
+export function updateInventorySummary(key, value) {
+  if (!state.currentReport) return;
+  setState({
+    currentReport: {
+      ...state.currentReport,
+      summary: {
+        ...(state.currentReport.summary || createDefaultSummary()),
+        [key]: value,
+      },
+    },
+  });
+}
+
+export function updateInventoryCheck(key, value) {
+  if (!state.currentReport) return;
+  setState({
+    currentReport: {
+      ...state.currentReport,
+      checks: {
+        ...(state.currentReport.checks || createDefaultChecks()),
+        [key]: value,
+      },
+    },
+  });
+}
+
+export function updateInventoryReportMeta(patch) {
+  if (!state.currentReport) return;
+  setState({
+    currentReport: {
+      ...state.currentReport,
+      ...patch,
+    },
+  });
 }
 
 export function updateInventoryItem(roomId, itemId, patch) {
@@ -200,6 +262,29 @@ export function removeRoomMedia(roomId, mediaId) {
               visuallyDocumented: Boolean(latestPano),
             };
           })()
+        : room
+    ),
+  };
+  setState({ currentReport: next });
+}
+
+export function updateRoomMedia(roomId, mediaId, patch) {
+  if (!state.currentReport) return;
+  const next = {
+    ...state.currentReport,
+    rooms: state.currentReport.rooms.map((room) =>
+      room.roomId === roomId
+        ? {
+            ...room,
+            media: room.media.map((media) =>
+              media.id === mediaId
+                ? {
+                    ...media,
+                    ...patch,
+                  }
+                : media
+            ),
+          }
         : room
     ),
   };
