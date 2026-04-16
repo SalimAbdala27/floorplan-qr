@@ -39,6 +39,35 @@ function hexToRgb(hex, fallback = [31, 41, 55]) {
   ];
 }
 
+function getImageFormat(dataUrl, fallback = "JPEG") {
+  const value = String(dataUrl || "").toLowerCase();
+  if (value.startsWith("data:image/png")) return "PNG";
+  if (value.startsWith("data:image/webp")) return "WEBP";
+  return fallback;
+}
+
+function addContainedImage(doc, imageData, x, y, maxWidth, maxHeight, fallbackFormat = "JPEG", align = "center") {
+  const imageFormat = getImageFormat(imageData, fallbackFormat);
+  const props = doc.getImageProperties(imageData);
+  const width = props?.width || maxWidth;
+  const height = props?.height || maxHeight;
+  const scale = Math.min(maxWidth / width, maxHeight / height);
+  const drawWidth = Math.max(1, width * scale);
+  const drawHeight = Math.max(1, height * scale);
+  const drawX =
+    align === "left"
+      ? x
+      : x + (maxWidth - drawWidth) / 2;
+  const drawY = y + (maxHeight - drawHeight) / 2;
+  doc.addImage(imageData, imageFormat, drawX, drawY, drawWidth, drawHeight);
+  return {
+    x: drawX,
+    y: drawY,
+    width: drawWidth,
+    height: drawHeight,
+  };
+}
+
 const HOME_PRESETS = [
   {
     key: "studio_flat",
@@ -1613,7 +1642,7 @@ function HomeScreen({
     doc.rect(0, 0, 210, 26, "F");
     if (pdfBranding.logoDataUrl) {
       try {
-        doc.addImage(pdfBranding.logoDataUrl, "PNG", 14, 8, 18, 18);
+        addContainedImage(doc, pdfBranding.logoDataUrl, 14, 8, 18, 18, "PNG", "left");
       } catch {
         // no-op
       }
@@ -1677,7 +1706,7 @@ function HomeScreen({
     doc.rect(0, 0, 210, 18, "F");
     if (pdfBranding.logoDataUrl) {
       try {
-        doc.addImage(pdfBranding.logoDataUrl, "PNG", 14, 3, 12, 12);
+        addContainedImage(doc, pdfBranding.logoDataUrl, 14, 3, 12, 12, "PNG", "left");
       } catch {
         // no-op
       }
@@ -1854,7 +1883,7 @@ function HomeScreen({
 
     if (pdfBranding.logoDataUrl) {
       try {
-        doc.addImage(pdfBranding.logoDataUrl, "PNG", 14, 10, 20, 20);
+        addContainedImage(doc, pdfBranding.logoDataUrl, 14, 10, 20, 20, "PNG", "left");
       } catch {
         // no-op
       }
@@ -2470,7 +2499,7 @@ function HomeScreen({
           if (media.preview || media.url?.startsWith("data:image")) {
             try {
               const imageData = media.preview || media.url;
-              doc.addImage(imageData, "JPEG", 14, currentY, 78, 44);
+              addContainedImage(doc, imageData, 14, currentY, 78, 44);
             } catch {
               doc.text("Image unavailable", 14, currentY + 4);
             }

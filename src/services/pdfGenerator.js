@@ -16,6 +16,32 @@ function formatCondition(value) {
   return String(value).charAt(0).toUpperCase() + String(value).slice(1);
 }
 
+function getImageFormat(dataUrl, fallback = "JPEG") {
+  const value = String(dataUrl || "").toLowerCase();
+  if (value.startsWith("data:image/png")) return "PNG";
+  if (value.startsWith("data:image/webp")) return "WEBP";
+  return fallback;
+}
+
+function addContainedImage(doc, imageData, x, y, maxWidth, maxHeight, fallbackFormat = "JPEG", align = "center") {
+  const imageFormat = getImageFormat(imageData, fallbackFormat);
+  const props = doc.getImageProperties(imageData);
+  const width = props?.width || maxWidth;
+  const height = props?.height || maxHeight;
+  const scale = Math.min(maxWidth / width, maxHeight / height);
+  const drawWidth = Math.max(1, width * scale);
+  const drawHeight = Math.max(1, height * scale);
+  const drawX = align === "left" ? x : x + (maxWidth - drawWidth) / 2;
+  const drawY = y + (maxHeight - drawHeight) / 2;
+  doc.addImage(imageData, imageFormat, drawX, drawY, drawWidth, drawHeight);
+  return {
+    x: drawX,
+    y: drawY,
+    width: drawWidth,
+    height: drawHeight,
+  };
+}
+
 export function generateInventoryPdf(report, roomsById, propertyName = "Property", options = {}) {
   const branding = options.branding || {};
   const doc = new jsPDF();
@@ -25,7 +51,7 @@ export function generateInventoryPdf(report, roomsById, propertyName = "Property
 
   if (branding.logoDataUrl) {
     try {
-      doc.addImage(branding.logoDataUrl, "PNG", 14, 10, 20, 20);
+      addContainedImage(doc, branding.logoDataUrl, 14, 10, 20, 20, "PNG", "left");
     } catch {
       // no-op
     }
@@ -96,7 +122,7 @@ export function generateInventoryPdf(report, roomsById, propertyName = "Property
       if (media.preview || media.url?.startsWith("data:image")) {
         try {
           const imageData = media.preview || media.url;
-          doc.addImage(imageData, "JPEG", 14, y, 90, 50);
+          addContainedImage(doc, imageData, 14, y, 90, 50);
         } catch {
           doc.text("Image preview unavailable", 14, y + 4);
         }
