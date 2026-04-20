@@ -61,6 +61,17 @@ function createDefaultChecks() {
   }, {});
 }
 
+function createDefaultDeclaration() {
+  return {
+    declarantName: "",
+    declarantRole: "",
+    declaredAt: "",
+    statement:
+      "I confirm that this inventory inspection and supporting media accurately reflect the condition of the property at the time of visit.",
+    signatureDataUrl: "",
+  };
+}
+
 function mergeRoomInventory(defaultRoom, existingRoom) {
   if (!existingRoom) return defaultRoom;
   const existingItemsByName = new Map((existingRoom.items || []).map((item) => [item.name, item]));
@@ -131,6 +142,10 @@ export function initializeInventoryReport(propertyId, rooms, existingReport) {
     },
     additionalNotes: typeof existingReport?.additionalNotes === "string" ? existingReport.additionalNotes : "",
     conductedBy: typeof existingReport?.conductedBy === "string" ? existingReport.conductedBy : "",
+    declaration: {
+      ...createDefaultDeclaration(),
+      ...(existingReport?.declaration || {}),
+    },
     rooms: roomList.map((room) =>
       mergeRoomInventory(createDefaultRoomInventory(room.id), existingRoomsById.get(room.id))
     ),

@@ -1,3 +1,5 @@
+import Brochure from "./Brochure.jsx";
+
 function countMatchingRooms(rooms, matchers) {
   return rooms.filter((room) => {
     const name = String(room.name || "").toLowerCase();
@@ -12,11 +14,6 @@ function deriveStats(rooms, floors) {
     receptions: countMatchingRooms(rooms, ["living room", "reception", "lounge", "dining room"]),
     floors: floors.length || 1,
   };
-}
-
-function formatStat(count, singular, plural = `${singular}s`) {
-  if (!count) return null;
-  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function splitFeatures(value) {
@@ -50,18 +47,23 @@ export default function MarketingBrochureFlow({
 }) {
   const stats = deriveStats(home.rooms || [], floors || []);
   const features = splitFeatures(brochure.keyFeaturesText);
-  const statPills = [
-    formatStat(stats.bedrooms, "bedroom"),
-    formatStat(stats.bathrooms, "bathroom"),
-    formatStat(stats.receptions, "reception room"),
-    formatStat(stats.floors, "floor"),
-  ].filter(Boolean);
-
   const roomSummary = (home.rooms || []).map((room) => ({
     id: room.id,
     name: room.name,
     floor: floors.find((floor) => floor.id === room.floorId)?.name || "Unassigned floor",
     size: `${room.widthMeters || 4}m x ${room.heightMeters || 3}m`,
+  }));
+  const brochureMeta = [
+    { label: "Tenure", value: brochure.tenure },
+    { label: "Council Tax", value: brochure.councilTaxBand },
+    { label: "EPC Rating", value: brochure.epcRating ? `EPC ${brochure.epcRating}` : "" },
+    { label: "Floors", value: stats.floors ? String(stats.floors) : "" },
+  ];
+  const brochureTitle = brochure.headline || brochure.propertyType || home.name;
+  const brochureLocation = brochure.addressLine || home.name;
+  const brochureGallery = selectedImages.map((image) => ({
+    ...image,
+    caption: image.caption || image.roomName || "Property image",
   }));
 
   return (
@@ -412,162 +414,26 @@ export default function MarketingBrochureFlow({
         </div>
 
         <div className="rounded-[28px] border border-zinc-200 bg-white p-3 shadow-sm">
-          <div
-            className="overflow-hidden rounded-[22px] border border-zinc-200"
-            style={{ backgroundColor: brochure.accentColor || "#dbeafe" }}
-          >
-            {heroImage ? (
-              <img src={heroImage} alt={`${home.name} marketing`} className="h-64 w-full object-cover md:h-80" />
-            ) : (
-              <div className="flex h-64 items-center justify-center bg-zinc-200 text-sm font-medium text-zinc-500 md:h-80">
-                Upload a hero image or add inventory photos for brochure visuals
-              </div>
-            )}
-            <div className="bg-white px-4 py-4 md:px-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  {logoImage ? (
-                    <img
-                      src={logoImage}
-                      alt="Estate agent logo"
-                      className="mb-3 h-10 w-auto rounded-lg border border-zinc-200 bg-white p-1"
-                    />
-                  ) : null}
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
-                    {brochure.propertyType || "Property brochure"}
-                  </p>
-                  <h2 className="mt-1 text-2xl font-semibold text-zinc-900 md:text-3xl">
-                    {brochure.addressLine || home.name}
-                  </h2>
-                  <p className="mt-1 text-sm text-zinc-600">
-                    {brochure.headline || "Marketing-ready brochure generated from your saved property details."}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-zinc-900 px-4 py-3 text-right text-white">
-                  <p className="text-[11px] uppercase tracking-[0.12em] text-white/70">Guide price</p>
-                  <p className="mt-1 text-2xl font-semibold">{brochure.askingPrice || "Add asking price"}</p>
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {statPills.map((pill) => (
-                  <span key={pill} className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700">
-                    {pill}
-                  </span>
-                ))}
-                {brochure.tenure ? (
-                  <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700">
-                    {brochure.tenure}
-                  </span>
-                ) : null}
-                {brochure.epcRating ? (
-                  <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700">
-                    EPC {brochure.epcRating}
-                  </span>
-                ) : null}
-              </div>
-
-              <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                    Overview
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-zinc-700">
-                    {brochure.summary ||
-                      "Use this space to describe the home, its layout, the quality of finish, the setting, and who it is ideal for."}
-                  </p>
-
-                  <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                    Room schedule
-                  </p>
-                  <div className="mt-2 divide-y divide-zinc-200 rounded-2xl border border-zinc-200">
-                    {roomSummary.map((room) => (
-                      <div key={room.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                        <div>
-                          <p className="text-sm font-semibold text-zinc-800">{room.name}</p>
-                          <p className="text-[11px] text-zinc-500">{room.floor}</p>
-                        </div>
-                        <p className="text-[11px] font-medium text-zinc-600">{room.size}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                      Key features
-                    </p>
-                    <div className="mt-2 space-y-2">
-                      {(features.length ? features : ["Add one feature per line to build the brochure highlights."]).map(
-                        (feature) => (
-                          <div key={feature} className="rounded-xl bg-white px-3 py-2 text-sm text-zinc-700">
-                            {feature}
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                      Floorplan
-                    </p>
-                    <div className="mt-2 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
-                      {floorplanPreviewImage ? (
-                        <img
-                          src={floorplanPreviewImage}
-                          alt={`${home.name} floorplan`}
-                          className="h-48 w-full object-contain bg-white"
-                        />
-                      ) : (
-                        <div className="flex h-48 items-center justify-center px-4 text-center text-sm text-zinc-500">
-                          The brochure will use the floorplan generated in the app when exported.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                      Property gallery
-                    </p>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      {selectedImages.length ? selectedImages.map((image) => (
-                        <img
-                          key={image.id}
-                          src={image.url}
-                          alt={image.roomName || "Brochure"}
-                          className="h-24 w-full rounded-xl object-cover"
-                        />
-                      )) : (
-                        <div className="col-span-2 flex h-24 items-center justify-center rounded-xl bg-white text-sm text-zinc-500">
-                          Upload or select brochure images to show the property rooms.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-900 p-4 text-white">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70">
-                      Arrange a viewing
-                    </p>
-                    <p className="mt-2 text-lg font-semibold">
-                      {brochure.branchName || branding.companyName || "Your branch details"}
-                    </p>
-                    <div className="mt-3 space-y-1 text-sm text-white/85">
-                      {brochure.agentName ? <p>{brochure.agentName}</p> : null}
-                      {brochure.agentPhone ? <p>{brochure.agentPhone}</p> : null}
-                      {brochure.agentEmail ? <p>{brochure.agentEmail}</p> : null}
-                      {!brochure.agentName && !brochure.agentPhone && !brochure.agentEmail ? (
-                        <p>Add contact details so the brochure is ready to send to applicants.</p>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <Brochure
+            accentColor={brochure.accentColor || "#0f766e"}
+            logo={logoImage}
+            heroImage={heroImage}
+            title={brochureTitle}
+            location={brochureLocation}
+            price={brochure.askingPrice}
+            propertyType={brochure.propertyType}
+            summary={brochure.summary}
+            features={features}
+            stats={stats}
+            meta={brochureMeta}
+            galleryImages={brochureGallery}
+            floorplanImage={floorplanPreviewImage}
+            rooms={roomSummary}
+            branchName={brochure.branchName || branding.companyName}
+            agentName={brochure.agentName}
+            agentPhone={brochure.agentPhone}
+            agentEmail={brochure.agentEmail}
+          />
         </div>
       </div>
     </div>

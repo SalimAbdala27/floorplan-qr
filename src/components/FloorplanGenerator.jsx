@@ -5,6 +5,7 @@ const CANVAS_HEIGHT = 640;
 const ITEM_SAFE_MARGIN = 8;
 const SNAP_DISTANCE = 10;
 const PIXELS_PER_METER = 40;
+const DEFAULT_WALL_THICKNESS_METERS = 0.2;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -98,6 +99,9 @@ function normalizeLayout(layout) {
     const floors = layout.floors.map(normalizeFloor);
     const hasActive = floors.some((floor) => floor.id === layout.activeFloorId);
     return {
+      wallThicknessMeters: Number.isFinite(Number(layout?.wallThicknessMeters))
+        ? Math.min(1, Math.max(0.05, Number(layout.wallThicknessMeters)))
+        : DEFAULT_WALL_THICKNESS_METERS,
       floors,
       activeFloorId: hasActive ? layout.activeFloorId : floors[0].id,
     };
@@ -113,6 +117,7 @@ function normalizeLayout(layout) {
   };
 
   return {
+    wallThicknessMeters: DEFAULT_WALL_THICKNESS_METERS,
     floors: [legacyFloor],
     activeFloorId: legacyFloor.id,
   };
@@ -369,6 +374,7 @@ export default function FloorplanGenerator({
   const normalizedLayout = useMemo(() => normalizeLayout(layout), [layout]);
   const floors = normalizedLayout.floors;
   const activeFloorId = normalizedLayout.activeFloorId;
+  const wallBorderWidth = Math.max(2, Math.min(10, normalizedLayout.wallThicknessMeters * 24));
   const activeFloor =
     floors.find((floor) => floor.id === activeFloorId) || floors[0] || baseFloor("floor_1", "Ground Floor");
   const previewFloor =
@@ -1261,12 +1267,18 @@ export default function FloorplanGenerator({
       type="button"
       onClick={() => setSelected({ type: "rooms", id: room.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "rooms", room)}
-      className={`absolute box-border select-none rounded-md border-[4px] border-black bg-white px-2 py-1 text-center text-[11px] font-semibold text-zinc-800 transition ${
+      className={`absolute box-border select-none rounded-md border-black bg-white px-2 py-1 text-center text-[11px] font-semibold text-zinc-800 transition ${
         selected?.floorId === activeFloor.id && selected?.type === "rooms" && selected?.id === room.id
           ? selectedStyle
           : ""
       }`}
-      style={{ ...getItemStyle(room), userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
+      style={{
+        ...getItemStyle(room),
+        borderWidth: `${wallBorderWidth}px`,
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
+      }}
     >
       <span className="block truncate">{room.name}</span>
       <span className="block text-[10px] font-medium text-zinc-500">

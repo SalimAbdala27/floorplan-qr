@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import InventoryRoom from "./InventoryRoom.jsx";
+import DeclarationForm from "./DeclarationForm.jsx";
 import {
   useInventoryStore,
   initializeInventoryReport,
@@ -78,6 +79,12 @@ export default function InventoryFlow({
   initialReport,
   onReportChange,
   defaultBranding,
+  branding,
+  onBrandingChange,
+  onBrandLogoSelected,
+  onBrandHeaderLogoSelected,
+  onRemoveBrandLogo,
+  onRemoveBrandHeaderLogo,
   onAddRoom,
 }) {
   const currentReport = useInventoryStore((s) => s.currentReport);
@@ -87,24 +94,13 @@ export default function InventoryFlow({
   const [newRoomFloorId, setNewRoomFloorId] = useState("floor_1");
   const [downloadZipBusy, setDownloadZipBusy] = useState(false);
   const [downloadZipMessage, setDownloadZipMessage] = useState("");
-  const [inventoryBranding, setInventoryBranding] = useState({
-    companyName: defaultBranding?.companyName || "",
-    primaryColor: defaultBranding?.primaryColor || "#1f2937",
-    accentColor: defaultBranding?.accentColor || "#e2e8f0",
-    logoDataUrl: defaultBranding?.logoDataUrl || null,
-  });
-
-  const onBrandLogoSelected = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setInventoryBranding((prev) => ({
-        ...prev,
-        logoDataUrl: String(reader.result || ""),
-      }));
-    };
-    reader.readAsDataURL(file);
+  const inventoryBranding = branding || defaultBranding || {
+    companyName: "",
+    primaryColor: "#1f2937",
+    accentColor: "#e2e8f0",
+    logoDataUrl: null,
+    headerLogoDataUrl: null,
+    brandImageVariant: "logo",
   };
 
   useEffect(() => {
@@ -282,6 +278,11 @@ export default function InventoryFlow({
         />
       ) : null}
 
+      <DeclarationForm
+        declaration={currentReport.declaration}
+        onChange={(declaration) => updateInventoryReportMeta({ declaration })}
+      />
+
       <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
         <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Summary</p>
         <div className="mt-3 rounded-xl border border-zinc-200 p-3">
@@ -374,7 +375,7 @@ export default function InventoryFlow({
             type="text"
             value={inventoryBranding.companyName}
             onChange={(event) =>
-              setInventoryBranding((prev) => ({
+              onBrandingChange?.((prev) => ({
                 ...prev,
                 companyName: event.target.value,
               }))
@@ -383,11 +384,45 @@ export default function InventoryFlow({
             className="h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
           />
           <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                onBrandingChange?.((prev) => ({
+                  ...prev,
+                  brandImageVariant: "logo",
+                }))
+              }
+              className={`h-9 rounded-lg text-[11px] font-semibold ${
+                inventoryBranding.brandImageVariant === "logo"
+                  ? "bg-zinc-800 text-white"
+                  : "bg-zinc-100 text-zinc-700"
+              }`}
+            >
+              Use Logo
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                onBrandingChange?.((prev) => ({
+                  ...prev,
+                  brandImageVariant: "header",
+                }))
+              }
+              className={`h-9 rounded-lg text-[11px] font-semibold ${
+                inventoryBranding.brandImageVariant === "header"
+                  ? "bg-zinc-800 text-white"
+                  : "bg-zinc-100 text-zinc-700"
+              }`}
+            >
+              Use Header Logo
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
             <input
               type="color"
               value={inventoryBranding.primaryColor}
               onChange={(event) =>
-                setInventoryBranding((prev) => ({
+                onBrandingChange?.((prev) => ({
                   ...prev,
                   primaryColor: event.target.value,
                 }))
@@ -398,7 +433,7 @@ export default function InventoryFlow({
               type="color"
               value={inventoryBranding.accentColor}
               onChange={(event) =>
-                setInventoryBranding((prev) => ({
+                onBrandingChange?.((prev) => ({
                   ...prev,
                   accentColor: event.target.value,
                 }))
@@ -414,16 +449,40 @@ export default function InventoryFlow({
             {inventoryBranding.logoDataUrl ? (
               <button
                 type="button"
-                onClick={() =>
-                  setInventoryBranding((prev) => ({
-                    ...prev,
-                    logoDataUrl: null,
-                  }))
-                }
+                onClick={onRemoveBrandLogo}
                 className="h-9 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
               >
                 Remove
               </button>
+            ) : null}
+            <label className="h-9 rounded-lg bg-zinc-700 px-3 text-[11px] font-semibold text-white flex items-center cursor-pointer">
+              Upload Header Logo
+              <input type="file" accept="image/*" className="hidden" onChange={onBrandHeaderLogoSelected} />
+            </label>
+            {inventoryBranding.headerLogoDataUrl ? (
+              <button
+                type="button"
+                onClick={onRemoveBrandHeaderLogo}
+                className="h-9 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
+              >
+                Remove Header
+              </button>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {inventoryBranding.logoDataUrl ? (
+              <img
+                src={inventoryBranding.logoDataUrl}
+                alt="PDF logo preview"
+                className="h-12 w-auto rounded border border-zinc-200 bg-white p-1"
+              />
+            ) : null}
+            {inventoryBranding.headerLogoDataUrl ? (
+              <img
+                src={inventoryBranding.headerLogoDataUrl}
+                alt="PDF header logo preview"
+                className="h-12 w-full rounded border border-zinc-200 bg-white p-1 object-contain"
+              />
             ) : null}
           </div>
         </div>

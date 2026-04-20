@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import InventoryChecklist from "./InventoryChecklist.jsx";
 import MediaUploader from "./MediaUploader.jsx";
 import PanoViewer from "./PanoViewer.jsx";
@@ -31,6 +31,8 @@ export default function InventoryRoom({
   onUpdateMedia,
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [selectedMediaIds, setSelectedMediaIds] = useState([]);
+  const [bulkAssignment, setBulkAssignment] = useState("");
   const primaryPanoSrc = useMemo(
     () =>
       roomInventory.panoramaImage ||
@@ -43,6 +45,34 @@ export default function InventoryRoom({
     const roomItemNames = (roomInventory.items || []).map((item) => item.name).filter(Boolean);
     return Array.from(new Set([...MEDIA_ASSIGNMENT_OPTIONS, ...roomItemNames]));
   }, [roomInventory.items]);
+  const selectedCount = selectedMediaIds.length;
+
+  useEffect(() => {
+    setSelectedMediaIds([]);
+    setBulkAssignment("");
+  }, [roomInventory.roomId]);
+
+  const toggleSelectedMedia = (mediaId) => {
+    setSelectedMediaIds((prev) => (
+      prev.includes(mediaId) ? prev.filter((id) => id !== mediaId) : [...prev, mediaId]
+    ));
+  };
+
+  const selectAllMedia = () => {
+    setSelectedMediaIds((roomInventory.media || []).map((media) => media.id));
+  };
+
+  const clearSelectedMedia = () => {
+    setSelectedMediaIds([]);
+  };
+
+  const applyBulkAssignment = () => {
+    if (!bulkAssignment || !selectedMediaIds.length) return;
+    selectedMediaIds.forEach((mediaId) => {
+      onUpdateMedia?.(mediaId, { assignment: bulkAssignment });
+    });
+    setSelectedMediaIds([]);
+  };
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
@@ -73,11 +103,15 @@ export default function InventoryRoom({
         <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-2">
           <p className="text-[11px] font-semibold text-zinc-700">Panorama Guide</p>
           <p className="mt-1 text-[11px] text-zinc-500">
-            Use `Add Panorama` to choose camera or photo library. For best results, stand in the doorway or centre
-            of the room and upload a wide panoramic image that shows as much of the space as possible.
+            Upload an existing panoramic image for the room. For best results, stand in the doorway or centre of the
+            room when the panorama is taken so it shows as much of the space as possible.
           </p>
         </div>
-        <MediaUploader onCapturePanorama={onCapturePanorama} onCaptureDetailPhoto={onCaptureDetailPhoto} />
+        <MediaUploader
+          onCapturePanorama={onCapturePanorama}
+          onCaptureDetailPhoto={onCaptureDetailPhoto}
+          assignmentOptions={assignmentOptions}
+        />
         {roomInventory.visuallyDocumented ? (
           <p className="text-[11px] font-medium text-emerald-700">Visually documented</p>
         ) : null}
@@ -129,9 +163,59 @@ export default function InventoryRoom({
         <p className="text-xs font-semibold text-zinc-700">Media</p>
       </div>
 
+      {roomInventory.media.length ? (
+        <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={bulkAssignment}
+              onChange={(event) => setBulkAssignment(event.target.value)}
+              className="h-9 min-w-[180px] rounded-lg border border-zinc-300 bg-white px-2 text-xs"
+            >
+              <option value="">Bulk assign selected media</option>
+              {assignmentOptions.map((option) => (
+                <option key={`bulk-${option}`} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={applyBulkAssignment}
+              disabled={!bulkAssignment || !selectedCount}
+              className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white disabled:opacity-40"
+            >
+              Apply to {selectedCount || 0}
+            </button>
+            <button
+              type="button"
+              onClick={selectAllMedia}
+              className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700"
+            >
+              Select All
+            </button>
+            <button
+              type="button"
+              onClick={clearSelectedMedia}
+              className="h-9 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
         {roomInventory.media.map((media) => (
           <div key={media.id} className="rounded-lg border border-zinc-200 p-2">
+            <label className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-zinc-700">
+              <input
+                type="checkbox"
+                checked={selectedMediaIds.includes(media.id)}
+                onChange={() => toggleSelectedMedia(media.id)}
+                className="h-4 w-4 accent-zinc-800"
+              />
+              Select for bulk assign
+            </label>
             {media.type === "pano" ? (
               <PanoViewer src={media.preview || media.url} alt="Panorama" heightClass="h-40" />
             ) : (
@@ -142,6 +226,15 @@ export default function InventoryRoom({
                 className="h-28 w-full rounded border border-zinc-200 object-cover"
               />
             )}
+            <p className="mt-2 text-[11px] text-zinc-500">
+              Photo date: {media.capturedAt ? new Date(media.capturedAt).toLocaleString() : "Not recorded"}
+            </p>
+            <p className="text-[11px] text-zinc-500">
+              Uploaded: {media.uploadedAt ? new Date(media.uploadedAt).toLocaleString() : "Not recorded"}
+            </p>
+            <p className="text-[11px] text-zinc-500">
+              Saved size: {media.compressedSizeBytes ? `${(media.compressedSizeBytes / 1024 / 1024).toFixed(2)} MB` : "Unknown"}
+            </p>
             <div className="mt-2">
               <p className="text-[11px] font-semibold text-zinc-700">Assign image to</p>
               <select

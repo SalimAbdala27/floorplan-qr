@@ -16,6 +16,123 @@ import {
 
 const STORAGE_KEY_PREFIX = "floorplan_qr_state_v3";
 const FLOORPLAN_PIXELS_PER_METER = 40;
+const DEFAULT_WALL_THICKNESS_METERS = 0.2;
+
+function createDefaultPdfBranding() {
+  return {
+    companyName: "",
+    primaryColor: "#1f2937",
+    accentColor: "#e2e8f0",
+    logoDataUrl: null,
+    headerLogoDataUrl: null,
+    brandImageVariant: "logo",
+  };
+}
+
+function normalizePdfBranding(value) {
+  const defaults = createDefaultPdfBranding();
+  return {
+    ...defaults,
+    ...(value || {}),
+    companyName: String(value?.companyName || defaults.companyName),
+    primaryColor: String(value?.primaryColor || defaults.primaryColor),
+    accentColor: String(value?.accentColor || defaults.accentColor),
+    logoDataUrl: value?.logoDataUrl || null,
+    headerLogoDataUrl: value?.headerLogoDataUrl || null,
+    brandImageVariant: value?.brandImageVariant === "header" ? "header" : "logo",
+  };
+}
+
+function getSelectedBrandImage(branding) {
+  if (branding?.brandImageVariant === "header" && branding?.headerLogoDataUrl) {
+    return {
+      dataUrl: branding.headerLogoDataUrl,
+      variant: "header",
+    };
+  }
+  if (branding?.logoDataUrl) {
+    return {
+      dataUrl: branding.logoDataUrl,
+      variant: "logo",
+    };
+  }
+  if (branding?.headerLogoDataUrl) {
+    return {
+      dataUrl: branding.headerLogoDataUrl,
+      variant: "header",
+    };
+  }
+  return {
+    dataUrl: null,
+    variant: "logo",
+  };
+}
+
+function normalizeWallThickness(value) {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_WALL_THICKNESS_METERS;
+  return Math.min(1, Math.max(0.05, Number(parsed.toFixed(2))));
+}
+
+function createServiceCheckEntry(recorded = false) {
+  return {
+    recorded: Boolean(recorded),
+    worksAt: null,
+    testedAt: null,
+  };
+}
+
+function normalizeServiceCheckEntry(value) {
+  if (typeof value === "boolean") return createServiceCheckEntry(value);
+  return {
+    recorded: Boolean(value?.recorded || value?.worksAt || value?.testedAt),
+    worksAt: typeof value?.worksAt === "string" && value.worksAt ? value.worksAt : null,
+    testedAt: typeof value?.testedAt === "string" && value.testedAt ? value.testedAt : null,
+  };
+}
+
+function buildServiceCheckMapFromRooms(rooms, defaultValue = false) {
+  const map = {};
+  rooms.forEach((room) => {
+    map[room.id] = createServiceCheckEntry(defaultValue);
+  });
+  return map;
+}
+
+function formatRecordedTimestamp(value) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  return date.toLocaleString();
+}
+
+async function compressImageFileToDataUrl(file, maxSize = 1280, quality = 0.78) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read image"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Invalid image"));
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const width = Math.round(img.width * scale);
+        const height = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Canvas not available"));
+          return;
+        }
+        context.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 function metersToPixels(meters, fallback) {
   const numeric = Number.parseFloat(meters);
@@ -439,14 +556,6 @@ function buildRoomsFromPreset(presetKey) {
   });
 }
 
-function buildBooleanMapFromRooms(rooms, defaultValue = false) {
-  const map = {};
-  rooms.forEach((room) => {
-    map[room.id] = defaultValue;
-  });
-  return map;
-}
-
 function buildLayoutFromRooms(rooms, presetKey = "") {
   const groupedRooms = rooms.reduce((acc, room) => {
     const floorId = room.floorId || "floor_1";
@@ -463,6 +572,7 @@ function buildLayoutFromRooms(rooms, presetKey = "") {
   });
 
   const layout = {
+    wallThicknessMeters: DEFAULT_WALL_THICKNESS_METERS,
     floors: orderedFloorIds.map((floorId) => ({
       id: floorId,
       name: getDefaultFloorNameById(floorId),
@@ -620,6 +730,7 @@ function normalizeFloorplanLayout(layout, rooms) {
       : floors[0].id;
 
     return {
+      wallThicknessMeters: normalizeWallThickness(layout.wallThicknessMeters),
       floors,
       activeFloorId,
     };
@@ -627,6 +738,7 @@ function normalizeFloorplanLayout(layout, rooms) {
 
   if (layout && (Array.isArray(layout.rooms) || Array.isArray(layout.doors))) {
     return {
+      wallThicknessMeters: DEFAULT_WALL_THICKNESS_METERS,
       floors: [
         {
           id: "floor_1",
@@ -674,8 +786,8 @@ function createBaseHome(id, name, presetKey) {
     breakers: {},
     nextFuseNumber: 1,
     fuseboxPhoto: null,
-    gasChecks: buildBooleanMapFromRooms(rooms, false),
-    fireAlarmChecks: buildBooleanMapFromRooms(rooms, false),
+    gasChecks: buildServiceCheckMapFromRooms(rooms, false),
+    fireAlarmChecks: buildServiceCheckMapFromRooms(rooms, false),
     floorplanLayout: buildPresetLayout(preset.key, rooms),
     inventoryReport: null,
     marketingBrochure: createDefaultMarketingBrochure(name),
@@ -712,6 +824,12 @@ function HomeScreen({
   onUpdateHome,
   onDeleteHome,
   onRenameHome,
+  pdfBranding,
+  onPdfBrandingChange,
+  onPdfLogoSelected,
+  onPdfHeaderLogoSelected,
+  onRemovePdfLogo,
+  onRemovePdfHeaderLogo,
 }) {
   const [newFuseRating, setNewFuseRating] = useState("B6");
   const [targetFuseCount, setTargetFuseCount] = useState("12");
@@ -723,12 +841,6 @@ function HomeScreen({
   const [roomMeasurementDraft, setRoomMeasurementDraft] = useState({ width: "", height: "" });
   const [roomListMeasurementDrafts, setRoomListMeasurementDrafts] = useState({});
   const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [pdfBranding, setPdfBranding] = useState({
-    companyName: "",
-    primaryColor: "#1f2937",
-    accentColor: "#e2e8f0",
-    logoDataUrl: null,
-  });
   const [floorplanStep, setFloorplanStep] = useState("preset");
   const [reportSections, setReportSections] = useState({
     fusebox: true,
@@ -754,12 +866,6 @@ function HomeScreen({
     setRoomListMeasurementDrafts({});
     setFloorplanStep("preset");
     setExportModalOpen(false);
-    setPdfBranding({
-      companyName: "",
-      primaryColor: "#1f2937",
-      accentColor: "#e2e8f0",
-      logoDataUrl: null,
-    });
   }, [home.id, home.presetKey]);
 
   useEffect(() => {
@@ -923,10 +1029,10 @@ function HomeScreen({
         room.socketsFuseId && validFuseIds.has(room.socketsFuseId) ? room.socketsFuseId : null,
     }));
 
-    const normalizeRoomMap = (map) => {
+    const normalizeServiceMap = (map) => {
       const normalized = {};
       normalizedRooms.forEach((room) => {
-        normalized[room.id] = Boolean(map?.[room.id]);
+        normalized[room.id] = normalizeServiceCheckEntry(map?.[room.id]);
       });
       return normalized;
     };
@@ -959,8 +1065,8 @@ function HomeScreen({
       })),
       rooms: normalizedRooms,
       breakers: normalizedBreakers,
-      gasChecks: normalizeRoomMap(nextHome.gasChecks),
-      fireAlarmChecks: normalizeRoomMap(nextHome.fireAlarmChecks),
+      gasChecks: normalizeServiceMap(nextHome.gasChecks),
+      fireAlarmChecks: normalizeServiceMap(nextHome.fireAlarmChecks),
       floorplanLayout: normalizedLayout,
       inventoryReport: normalizedInventoryReport,
       marketingBrochure: normalizedMarketingBrochure,
@@ -1103,11 +1209,11 @@ function HomeScreen({
         ],
         gasChecks: {
           ...prev.gasChecks,
-          [roomId]: false,
+          [roomId]: createServiceCheckEntry(false),
         },
         fireAlarmChecks: {
           ...prev.fireAlarmChecks,
-          [roomId]: false,
+          [roomId]: createServiceCheckEntry(false),
         },
         floorplanLayout: {
           ...normalizedLayout,
@@ -1336,25 +1442,27 @@ function HomeScreen({
     );
   };
 
-  const toggleGasCheck = (roomId) => {
+  const toggleServiceCheck = (field, roomId, timestampKey) => {
     updateHome((prev) => ({
       ...prev,
-      gasChecks: {
-        ...prev.gasChecks,
-        [roomId]: !prev.gasChecks?.[roomId],
+      [field]: {
+        ...prev[field],
+        [roomId]: (() => {
+          const existing = normalizeServiceCheckEntry(prev[field]?.[roomId]);
+          return {
+            ...existing,
+            recorded: true,
+            [timestampKey]: existing[timestampKey] ? null : new Date().toISOString(),
+          };
+        })(),
       },
     }));
   };
 
-  const toggleFireAlarmCheck = (roomId) => {
-    updateHome((prev) => ({
-      ...prev,
-      fireAlarmChecks: {
-        ...prev.fireAlarmChecks,
-        [roomId]: !prev.fireAlarmChecks?.[roomId],
-      },
-    }));
-  };
+  const toggleGasCheck = (roomId, timestampKey) => toggleServiceCheck("gasChecks", roomId, timestampKey);
+
+  const toggleFireAlarmCheck = (roomId, timestampKey) =>
+    toggleServiceCheck("fireAlarmChecks", roomId, timestampKey);
 
   const regenerateRoomsFromPreset = () => {
     const nextPreset = getPresetByKey(generatorPresetKey);
@@ -1364,8 +1472,8 @@ function HomeScreen({
       ...prev,
       presetKey: nextPreset.key,
       rooms: nextRooms,
-      gasChecks: buildBooleanMapFromRooms(nextRooms, false),
-      fireAlarmChecks: buildBooleanMapFromRooms(nextRooms, false),
+      gasChecks: buildServiceCheckMapFromRooms(nextRooms, false),
+      fireAlarmChecks: buildServiceCheckMapFromRooms(nextRooms, false),
       floorplanLayout: buildPresetLayout(nextPreset.key, nextRooms),
     }));
     setNewRoomFloorId("floor_1");
@@ -1419,8 +1527,10 @@ function HomeScreen({
       const nextGasChecks = { ...prev.gasChecks };
       const nextFireChecks = { ...prev.fireAlarmChecks };
       nextRooms.forEach((room) => {
-        if (nextGasChecks[room.id] === undefined) nextGasChecks[room.id] = false;
-        if (nextFireChecks[room.id] === undefined) nextFireChecks[room.id] = false;
+        if (nextGasChecks[room.id] === undefined) nextGasChecks[room.id] = createServiceCheckEntry(false);
+        else nextGasChecks[room.id] = normalizeServiceCheckEntry(nextGasChecks[room.id]);
+        if (nextFireChecks[room.id] === undefined) nextFireChecks[room.id] = createServiceCheckEntry(false);
+        else nextFireChecks[room.id] = normalizeServiceCheckEntry(nextFireChecks[room.id]);
       });
 
       return {
@@ -1432,33 +1542,6 @@ function HomeScreen({
       };
     });
   };
-
-  const compressImageFileToDataUrl = async (file, maxSize = 1280, quality = 0.78) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("Failed to read image"));
-      reader.onload = () => {
-        const img = new Image();
-        img.onerror = () => reject(new Error("Invalid image"));
-        img.onload = () => {
-          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
-          const width = Math.round(img.width * scale);
-          const height = Math.round(img.height * scale);
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const context = canvas.getContext("2d");
-          if (!context) {
-            reject(new Error("Canvas not available"));
-            return;
-          }
-          context.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/jpeg", quality));
-        };
-        img.src = String(reader.result);
-      };
-      reader.readAsDataURL(file);
-    });
 
   const onFuseboxPhotoSelected = async (event) => {
     const file = event.target.files?.[0];
@@ -1472,22 +1555,6 @@ function HomeScreen({
       }));
     } catch {
       // no-op; keep flow simple for now
-    } finally {
-      event.target.value = "";
-    }
-  };
-
-  const onPdfLogoSelected = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      const logoDataUrl = await compressImageFileToDataUrl(file, 640, 0.82);
-      setPdfBranding((prev) => ({
-        ...prev,
-        logoDataUrl,
-      }));
-    } catch {
-      // no-op
     } finally {
       event.target.value = "";
     }
@@ -1580,7 +1647,9 @@ function HomeScreen({
     const doc = new jsPDF();
     const safeHomeName = (home.name || "Home").replace(/[^\w\s-]/g, "").trim() || "home";
     const primaryRgb = hexToRgb(pdfBranding.primaryColor, [31, 41, 55]);
-    const accentRgb = hexToRgb(brochure.accentColor, [219, 234, 254]);
+    const accentRgb = hexToRgb(brochure.accentColor, [15, 118, 110]);
+    const accentSoftRgb = accentRgb.map((value) => Math.round(value + (255 - value) * 0.82));
+    const accentDarkRgb = accentRgb.map((value) => Math.round(value * 0.72));
     const heroImage = brochureHeroImage;
     const brochureLayout = normalizeFloorplanLayout(home.floorplanLayout, home.rooms);
     const brochureGalleryImages = [
@@ -1588,38 +1657,84 @@ function HomeScreen({
         id: image.id,
         url: image.url,
         label: image.caption || "Uploaded image",
+        type: "photo",
       })),
       ...inventoryBrochureMedia
         .filter((media) => (brochure.selectedInventoryMediaIds || []).includes(media.id))
         .map((media) => ({
           id: media.id,
           url: media.url,
-          label: `${media.roomName}${media.type === "pano" ? " panorama" : ""}`,
+          label: media.roomName,
+          type: media.type || "photo",
         })),
     ];
     const featureLines = String(brochure.keyFeaturesText || "")
       .split("\n")
       .map((item) => item.trim())
       .filter(Boolean);
-    const roomRows = home.rooms.map((room) => [
-      room.name,
-      floorNameById[room.floorId] || getDefaultFloorNameById(room.floorId || "floor_1"),
-      `${room.widthMeters || 4}m x ${room.heightMeters || 3}m`,
-    ]);
-    const statText = [
-      marketingStats.bedrooms ? `${marketingStats.bedrooms} bed` : null,
-      marketingStats.bathrooms ? `${marketingStats.bathrooms} bath` : null,
-      marketingStats.receptions ? `${marketingStats.receptions} reception` : null,
-      marketingStats.floors ? `${marketingStats.floors} floor` : null,
-    ]
-      .filter(Boolean)
-      .join("  |  ");
+    const roomRows = home.rooms.map((room) => ({
+      id: room.id,
+      name: room.name,
+      floor: floorNameById[room.floorId] || getDefaultFloorNameById(room.floorId || "floor_1"),
+      size: `${room.widthMeters || 4}m x ${room.heightMeters || 3}m`,
+    }));
+    const summaryText =
+      brochure.summary ||
+      "Create a brochure summary from the floorplan, room layout, and photography stored against this home.";
+    const locationTitle = brochure.addressLine || home.name;
+    const heroTitle = brochure.headline || brochure.propertyType || home.name;
+    const statCards = [
+      { label: "Bedrooms", value: String(marketingStats.bedrooms || 0) },
+      { label: "Bathrooms", value: String(marketingStats.bathrooms || 0) },
+      { label: "Reception", value: String(marketingStats.receptions || 0) },
+    ];
+    const metaCards = [
+      { label: "Tenure", value: brochure.tenure },
+      { label: "Council Tax", value: brochure.councilTaxBand },
+      { label: "EPC Rating", value: brochure.epcRating ? `EPC ${brochure.epcRating}` : "" },
+      { label: "Floors", value: marketingStats.floors ? String(marketingStats.floors) : "" },
+    ].filter((item) => item.value);
+    const brandImage = getSelectedBrandImage(pdfBranding);
+    const drawLogo = (x, y, width, height) => {
+      if (!brandImage.dataUrl) return false;
+      try {
+        addContainedImage(doc, brandImage.dataUrl, x, y, width, height, "PNG", "left");
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const drawSectionHeader = (title, subtitle = "") => {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(0, 0, 210, 297, "F");
+      doc.setFillColor(...accentDarkRgb);
+      doc.rect(0, 0, 210, 16, "F");
+      drawLogo(14, 5, 18, 8);
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(14);
+      doc.text(title, 14, 10.5);
+      if (subtitle) {
+        doc.setFontSize(8.5);
+        doc.text(subtitle, 196, 10.5, { align: "right" });
+      }
+    };
+    const drawFooter = () => {
+      doc.setDrawColor(...accentSoftRgb);
+      doc.setLineWidth(0.35);
+      doc.line(14, 284, 196, 284);
+      doc.setTextColor(120, 120, 120);
+      doc.setFontSize(8);
+      doc.text(`${brochure.branchName || pdfBranding.companyName || "Property brochure"} · Generated ${new Date().toLocaleString()}`, 14, 289);
+      if (brandImage.dataUrl) {
+        drawLogo(174, 285, 22, 8);
+      }
+    };
     const drawGeneratedBrochureFloorplanPage = (floor) => {
       const margin = 14;
       const drawX = margin;
-      const drawY = 24;
+      const drawY = 44;
       const drawWidth = 182;
-      const drawHeight = 220;
+      const drawHeight = 208;
       const allItems = [
         ...(floor.rooms || []),
         ...(floor.doors || []),
@@ -1637,16 +1752,20 @@ function HomeScreen({
       const sw = (value) => value * scale;
 
       doc.addPage();
-      doc.setFillColor(...primaryRgb);
-      doc.rect(0, 0, 210, 18, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(16);
-      doc.text(`Floorplan: ${floor.name}`, 14, 12);
+      drawSectionHeader("Floorplan", floor.name);
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(14, 28, 182, 236, 8, 8, "F");
+      doc.setTextColor(...primaryRgb);
+      doc.setFontSize(18);
+      doc.text("Floorplan", 105, 40, { align: "center" });
+      doc.setDrawColor(...accentSoftRgb);
+      doc.setLineWidth(0.4);
+      doc.line(84, 44, 126, 44);
       doc.setDrawColor(210, 210, 210);
       doc.setLineWidth(0.3);
       doc.rect(drawX, drawY, drawWidth, drawHeight);
 
-      doc.setDrawColor(230, 230, 230);
+      doc.setDrawColor(236, 239, 243);
       doc.setLineWidth(0.2);
       for (let gx = 0; gx <= maxX; gx += 40) {
         doc.line(sx(gx), drawY, sx(gx), drawY + drawHeight);
@@ -1657,8 +1776,8 @@ function HomeScreen({
 
       (floor.rooms || []).forEach((room) => {
         doc.setFillColor(255, 255, 255);
-        doc.setDrawColor(0, 0, 0);
-        doc.setLineWidth(1);
+        doc.setDrawColor(...primaryRgb);
+        doc.setLineWidth(0.8);
         doc.rect(sx(room.x), sy(room.y), sw(room.w), sw(room.h), "FD");
         doc.setTextColor(40, 40, 40);
         doc.setFontSize(8);
@@ -1672,13 +1791,13 @@ function HomeScreen({
 
       (floor.windows || []).forEach((windowItem) => {
         doc.setDrawColor(80, 80, 80);
-        doc.setLineWidth(1);
+        doc.setLineWidth(0.8);
         doc.rect(sx(windowItem.x), sy(windowItem.y), sw(windowItem.w), sw(windowItem.h));
       });
 
       (floor.doors || []).forEach((door) => {
-        doc.setDrawColor(0, 0, 0);
-        doc.setLineWidth(0.9);
+        doc.setDrawColor(...primaryRgb);
+        doc.setLineWidth(0.75);
         doc.line(sx(door.x), sy((door.y || 0) + (door.h || 0)), sx((door.x || 0) + (door.w || 0)), sy((door.y || 0) + (door.h || 0)));
       });
 
@@ -1694,7 +1813,7 @@ function HomeScreen({
       });
 
       (floor.stairs || []).forEach((stairsItem) => {
-        doc.setFillColor(...accentRgb);
+        doc.setFillColor(...accentSoftRgb);
         doc.setDrawColor(90, 90, 90);
         doc.setLineWidth(0.6);
         doc.rect(sx(stairsItem.x), sy(stairsItem.y), sw(stairsItem.w), sw(stairsItem.h), "FD");
@@ -1704,230 +1823,257 @@ function HomeScreen({
           maxWidth: Math.max(8, sw(stairsItem.w) - 4),
         });
       });
+      drawFooter();
     };
-
-    doc.setFillColor(...primaryRgb);
-    doc.rect(0, 0, 210, 26, "F");
-    if (pdfBranding.logoDataUrl) {
-      try {
-        addContainedImage(doc, pdfBranding.logoDataUrl, 14, 8, 18, 18, "PNG", "left");
-      } catch {
-        // no-op
-      }
-    }
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(20);
-    doc.text(brochure.addressLine || home.name, pdfBranding.logoDataUrl ? 38 : 14, 17, { maxWidth: 135 });
-    doc.setFontSize(10);
-    doc.text(brochure.propertyType || "Marketing brochure", pdfBranding.logoDataUrl ? 38 : 14, 23);
-
+    doc.setFillColor(248, 250, 252);
+    doc.rect(0, 0, 210, 297, "F");
     if (heroImage) {
       try {
-        doc.addImage(heroImage, "JPEG", 14, 32, 182, 82);
+        addContainedImage(doc, heroImage, 0, 0, 210, 297);
       } catch {
-        doc.setFillColor(235, 235, 235);
-        doc.rect(14, 32, 182, 82, "F");
+        doc.setFillColor(...accentDarkRgb);
+        doc.rect(0, 0, 210, 297, "F");
       }
     } else {
-      doc.setFillColor(235, 235, 235);
-      doc.rect(14, 32, 182, 82, "F");
-      doc.setTextColor(120, 120, 120);
+      doc.setFillColor(...accentDarkRgb);
+      doc.rect(0, 0, 210, 297, "F");
+      doc.setFillColor(...accentRgb);
+      doc.circle(182, 38, 34, "F");
+      doc.setFillColor(...accentSoftRgb);
+      doc.circle(28, 54, 20, "F");
+    }
+    doc.setFillColor(10, 18, 32);
+    doc.setGState(new doc.GState({ opacity: 0.58 }));
+    doc.rect(0, 0, 210, 297, "F");
+    doc.setGState(new doc.GState({ opacity: 1 }));
+
+    const hasCoverLogo = drawLogo(14, 14, 34, 18);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.text(brochure.propertyType || "Premium Listing", hasCoverLogo ? 52 : 14, 22);
+    doc.setFontSize(28);
+    doc.text(heroTitle, 14, 205, { maxWidth: 130, lineHeightFactor: 0.95 });
+    doc.setFontSize(12);
+    doc.setTextColor(232, 236, 241);
+    doc.text(locationTitle, 14, 220, { maxWidth: 118 });
+
+    doc.setFillColor(...accentRgb);
+    doc.roundedRect(142, 18, 54, 24, 8, 8, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(8);
+    doc.text("Guide Price", 148, 27);
+    doc.setFontSize(16);
+    doc.text(brochure.askingPrice || "Price on application", 148, 36, { maxWidth: 42 });
+
+    doc.setFillColor(255, 255, 255);
+    doc.setGState(new doc.GState({ opacity: 0.16 }));
+    doc.roundedRect(14, 232, 182, 44, 10, 10, "F");
+    doc.setGState(new doc.GState({ opacity: 1 }));
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.text(summaryText, 18, 244, { maxWidth: 110, lineHeightFactor: 1.5 });
+    statCards.forEach((stat, index) => {
+      const x = 136 + index * 19;
+      doc.setFillColor(...accentSoftRgb);
+      doc.setGState(new doc.GState({ opacity: 0.28 }));
+      doc.roundedRect(x, 240, 16, 24, 4, 4, "F");
+      doc.setGState(new doc.GState({ opacity: 1 }));
+      doc.setTextColor(255, 255, 255);
       doc.setFontSize(12);
-      doc.text("Add a brochure hero image or inventory photo", 58, 74);
-    }
-
-    doc.setFillColor(...accentRgb);
-    doc.roundedRect(14, 120, 58, 24, 4, 4, "F");
-    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-    doc.setFontSize(9);
-    doc.text("Guide price", 18, 129);
-    doc.setFontSize(18);
-    doc.text(brochure.askingPrice || "Add asking price", 18, 139, { maxWidth: 48 });
-
-    doc.setTextColor(60, 60, 60);
-    doc.setFontSize(9);
-    if (statText) {
-      doc.text(statText, 78, 129, { maxWidth: 118 });
-    }
-    const detailText = [
-      brochure.tenure ? `Tenure: ${brochure.tenure}` : null,
-      brochure.councilTaxBand ? `Council tax: ${brochure.councilTaxBand}` : null,
-      brochure.epcRating ? `EPC: ${brochure.epcRating}` : null,
-    ]
-      .filter(Boolean)
-      .join("  |  ");
-    if (detailText) {
-      doc.text(detailText, 78, 137, { maxWidth: 118 });
-    }
-
-    doc.setTextColor(70, 70, 70);
-    doc.setFontSize(10);
-    doc.text(
-      brochure.headline || "Marketing-ready brochure generated from your saved property details.",
-      78,
-      149,
-      { maxWidth: 118, lineHeightFactor: 1.35 }
-    );
-
-    doc.addPage();
-    doc.setFillColor(...primaryRgb);
-    doc.rect(0, 0, 210, 18, "F");
-    if (pdfBranding.logoDataUrl) {
-      try {
-        addContainedImage(doc, pdfBranding.logoDataUrl, 14, 3, 12, 12, "PNG", "left");
-      } catch {
-        // no-op
-      }
-    }
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
-    doc.text("Property overview", pdfBranding.logoDataUrl ? 30 : 14, 12);
-
-    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-    doc.setFontSize(18);
-    doc.text(brochure.headline || "Property overview", 14, 32, { maxWidth: 182 });
-    doc.setTextColor(70, 70, 70);
-    doc.setFontSize(10);
-    doc.text(
-      brochure.summary ||
-        "Create a brochure summary from the floorplan, room layout, and photography stored against this home.",
-      14,
-      42,
-      { maxWidth: 182, lineHeightFactor: 1.45 }
-    );
-
-    let nextY = 88;
-    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-    doc.setFontSize(12);
-    doc.text("Key features", 14, nextY);
-    nextY += 7;
-    doc.setTextColor(70, 70, 70);
-    doc.setFontSize(10);
-    (featureLines.length ? featureLines.slice(0, 8) : ["Add key features in the brochure builder."]).forEach((feature) => {
-      doc.circle(18, nextY - 1.2, 0.8, "F");
-      doc.text(feature, 22, nextY, { maxWidth: 170 });
-      nextY += 6;
-    });
-
-    autoTable(doc, {
-      startY: Math.max(nextY + 6, 146),
-      head: [["Room", "Floor", "Approx size"]],
-      body: roomRows.length ? roomRows : [["No rooms added", "-", "-"]],
-      theme: "grid",
-      styles: { fontSize: 9, cellPadding: 2.6 },
-      headStyles: {
-        fillColor: primaryRgb,
-        textColor: [255, 255, 255],
-      },
+      doc.text(stat.value, x + 8, 251, { align: "center" });
+      doc.setFontSize(6.6);
+      doc.text(stat.label, x + 8, 258, { align: "center", maxWidth: 14 });
     });
 
     doc.addPage();
-    doc.setFillColor(...primaryRgb);
-    doc.rect(0, 0, 210, 18, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
-    doc.text("Floorplan and contact", 14, 12);
+    drawSectionHeader("Overview", brochure.propertyType || "Marketing brochure");
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(14, 24, 182, 118, 10, 10, "F");
+    doc.setTextColor(...primaryRgb);
+    doc.setFontSize(22);
+    doc.text("Property overview", 18, 40);
+    doc.setDrawColor(...accentRgb);
+    doc.setLineWidth(1.2);
+    doc.line(18, 45, 52, 45);
+    doc.setTextColor(80, 80, 80);
+    doc.setFontSize(10.5);
+    doc.text(summaryText, 18, 56, { maxWidth: 98, lineHeightFactor: 1.75 });
 
-    const floorRows = floors.map((floor) => [
-      floor.name,
-      String(floor.rooms.length),
-      String(floor.doors.length),
-      String(floor.windows.length),
-      String(floor.spaces.length),
-    ]);
-    autoTable(doc, {
-      startY: 24,
-      head: [["Floor", "Rooms", "Doors", "Windows", "Items"]],
-      body: floorRows.length ? floorRows : [["No floorplan", "0", "0", "0", "0"]],
-      theme: "grid",
-      styles: { fontSize: 9, cellPadding: 2.6 },
-      headStyles: { fillColor: accentRgb, textColor: primaryRgb },
+    statCards.forEach((stat, index) => {
+      const x = 126 + (index % 2) * 32;
+      const y = 52 + Math.floor(index / 2) * 34;
+      doc.setFillColor(...accentSoftRgb);
+      doc.roundedRect(x, y, 28, 26, 6, 6, "F");
+      doc.setTextColor(...accentDarkRgb);
+      doc.setFontSize(16);
+      doc.text(stat.value, x + 14, y + 11, { align: "center" });
+      doc.setFontSize(7.5);
+      doc.text(stat.label, x + 14, y + 18, { align: "center", maxWidth: 22 });
     });
 
-    const afterFloorTable = doc.lastAutoTable.finalY + 10;
-    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-    doc.setFontSize(12);
-    doc.text("Included in this home record", 14, afterFloorTable);
-    doc.setTextColor(70, 70, 70);
-    doc.setFontSize(10);
-    doc.text(
-      "Generated from the saved room schedule, floor assignments, room measurements, and any uploaded inventory imagery.",
-      14,
-      afterFloorTable + 7,
-      { maxWidth: 182 }
-    );
-
-    const contactTop = afterFloorTable + 22;
-    doc.setFillColor(...accentRgb);
-    doc.roundedRect(14, contactTop, 182, 46, 4, 4, "F");
-    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-    doc.setFontSize(12);
-    doc.text("Book a viewing", 18, contactTop + 10);
-    doc.setFontSize(10);
-    const contactLines = [
-      brochure.branchName || pdfBranding.companyName || "Add branch details",
-      brochure.agentName || "Add agent name",
-      brochure.agentPhone || "Add phone number",
-      brochure.agentEmail || "Add email address",
-    ];
-    contactLines.forEach((line, index) => {
-      doc.text(line, 18, contactTop + 18 + index * 6, { maxWidth: 170 });
+    let metaY = 104;
+    metaCards.forEach((item, index) => {
+      const x = 126 + (index % 2) * 32;
+      const y = metaY + Math.floor(index / 2) * 20;
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x, y, 28, 16, 4, 4, "F");
+      doc.setTextColor(112, 112, 112);
+      doc.setFontSize(6.5);
+      doc.text(item.label, x + 2.5, y + 5);
+      doc.setTextColor(...primaryRgb);
+      doc.setFontSize(8.4);
+      doc.text(item.value, x + 2.5, y + 11, { maxWidth: 23 });
     });
+
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(14, 150, 182, 126, 10, 10, "F");
+    doc.setTextColor(...primaryRgb);
+    doc.setFontSize(15);
+    doc.text("Key highlights", 18, 164);
+    const highlights = featureLines.length ? featureLines.slice(0, 8) : ["Add key features in the brochure builder."];
+    let featureY = 176;
+    highlights.forEach((feature, index) => {
+      const x = index % 2 === 0 ? 18 : 106;
+      if (index % 2 === 0 && index > 0) featureY += 18;
+      doc.setFillColor(...accentSoftRgb);
+      doc.roundedRect(x, featureY - 6, 74, 12, 4, 4, "F");
+      doc.setTextColor(...primaryRgb);
+      doc.setFontSize(8.7);
+      doc.text(feature, x + 3, featureY + 1, { maxWidth: 68 });
+    });
+
+    let roomY = 176;
+    doc.setTextColor(...primaryRgb);
+    doc.setFontSize(15);
+    doc.text("Room details", 106, 164);
+    roomRows.slice(0, 5).forEach((room) => {
+      doc.setDrawColor(232, 236, 241);
+      doc.line(106, roomY + 4, 190, roomY + 4);
+      doc.setFontSize(9.2);
+      doc.setTextColor(...primaryRgb);
+      doc.text(room.name, 106, roomY);
+      doc.setTextColor(110, 110, 110);
+      doc.setFontSize(7.5);
+      doc.text(room.floor, 106, roomY + 5);
+      doc.setTextColor(...accentDarkRgb);
+      doc.setFontSize(8.5);
+      doc.text(room.size, 190, roomY, { align: "right" });
+      roomY += 18;
+    });
+    drawFooter();
 
     if (brochureGalleryImages.length) {
       let galleryIndex = 0;
       while (galleryIndex < brochureGalleryImages.length) {
         doc.addPage();
-        doc.setFillColor(...primaryRgb);
-        doc.rect(0, 0, 210, 18, "F");
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(16);
-        doc.text("Property photography", 14, 12);
+        drawSectionHeader("Gallery", "Property photography");
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(14, 24, 182, 252, 10, 10, "F");
 
         const pageImages = brochureGalleryImages.slice(galleryIndex, galleryIndex + 4);
         pageImages.forEach((image, index) => {
           const column = index % 2;
           const row = Math.floor(index / 2);
-          const x = 14 + column * 91;
-          const y = 26 + row * 122;
+          const x = 20 + column * 86;
+          const y = 32 + row * 108;
           try {
-            doc.addImage(image.url, "JPEG", x, y, 84, 72);
+            addContainedImage(doc, image.url, x, y, 78, 82);
           } catch {
             doc.setFillColor(235, 235, 235);
-            doc.rect(x, y, 84, 72, "F");
+            doc.roundedRect(x, y, 78, 82, 6, 6, "F");
           }
-          doc.setTextColor(80, 80, 80);
-          doc.setFontSize(9);
-          doc.text(image.label, x, y + 78, { maxWidth: 84 });
+          doc.setFillColor(10, 18, 32);
+          doc.setGState(new doc.GState({ opacity: 0.28 }));
+          doc.roundedRect(x, y + 56, 78, 26, 0, 0, "F");
+          doc.setGState(new doc.GState({ opacity: 1 }));
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(10);
+          doc.text(image.label || "Property image", x + 4, y + 67, { maxWidth: 54 });
+          doc.setFontSize(7);
+          doc.setTextColor(226, 232, 240);
+          doc.text(image.type === "pano" ? "Panorama" : "Photography", x + 4, y + 74);
+          if (image.type === "pano") {
+            doc.setFillColor(...accentRgb);
+            doc.roundedRect(x + 54, y + 62, 20, 10, 4, 4, "F");
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(6.5);
+            doc.text("View 360", x + 64, y + 68, { align: "center" });
+          }
         });
 
         galleryIndex += 4;
+        drawFooter();
       }
     }
 
     if (brochure.floorplanSource === "uploaded" && brochure.floorplanImage) {
       doc.addPage();
-      doc.setFillColor(...primaryRgb);
-      doc.rect(0, 0, 210, 18, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(16);
-      doc.text("Floorplan", 14, 12);
+      drawSectionHeader("Floorplan", "Uploaded image");
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(14, 24, 182, 252, 10, 10, "F");
+      doc.setTextColor(...primaryRgb);
+      doc.setFontSize(18);
+      doc.text("Floorplan", 105, 40, { align: "center" });
       try {
-        doc.addImage(brochure.floorplanImage, "JPEG", 14, 26, 182, 250);
+        addContainedImage(doc, brochure.floorplanImage, 20, 50, 170, 210);
       } catch {
         doc.setTextColor(120, 120, 120);
         doc.setFontSize(12);
         doc.text("Uploaded floorplan could not be rendered.", 50, 148);
       }
+      drawFooter();
     } else {
       brochureLayout.floors.forEach((floor) => {
         drawGeneratedBrochureFloorplanPage(floor);
       });
     }
 
-    doc.setTextColor(120, 120, 120);
-    doc.setFontSize(8);
-    doc.text(`Generated ${new Date().toLocaleString()}`, 14, 286);
+    doc.addPage();
+    doc.setFillColor(...accentDarkRgb);
+    doc.rect(0, 0, 210, 297, "F");
+    doc.setFillColor(...accentRgb);
+    doc.circle(170, 42, 36, "F");
+    doc.setFillColor(...accentSoftRgb);
+    doc.circle(30, 250, 24, "F");
+    if (pdfBranding.logoDataUrl) {
+      drawLogo(14, 16, 40, 18);
+    }
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    doc.text("Arrange A Viewing", 14, 48);
+    doc.setFontSize(28);
+    doc.text("Book a Viewing", 14, 66);
+    doc.setFontSize(12);
+    doc.setTextColor(228, 232, 238);
+    doc.text(
+      `Speak with ${brochure.branchName || pdfBranding.companyName || "the sales team"} to arrange a viewing and discuss the home in more detail.`,
+      14,
+      82,
+      { maxWidth: 120, lineHeightFactor: 1.6 }
+    );
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(14, 108, 62, 16, 8, 8, "F");
+    doc.setTextColor(...accentDarkRgb);
+    doc.setFontSize(11);
+    doc.text("Book a Viewing", 45, 118, { align: "center" });
+
+    doc.setFillColor(255, 255, 255);
+    doc.setGState(new doc.GState({ opacity: 0.12 }));
+    doc.roundedRect(116, 96, 80, 102, 10, 10, "F");
+    doc.setGState(new doc.GState({ opacity: 1 }));
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.text(brochure.branchName || pdfBranding.companyName || "Branch details", 122, 116, { maxWidth: 68 });
+    [
+      brochure.agentName || "Add agent name",
+      brochure.agentPhone || "Add phone number",
+      brochure.agentEmail || "Add email address",
+      locationTitle,
+    ].forEach((line, index) => {
+      doc.setFontSize(index === 0 ? 12 : 10);
+      doc.text(line, 122, 132 + index * 14, { maxWidth: 68 });
+    });
+    drawFooter();
 
     doc.save(`${safeHomeName.toLowerCase().replace(/\s+/g, "_")}_marketing_brochure.pdf`);
   };
@@ -1943,29 +2089,40 @@ function HomeScreen({
     const safeHomeName = (home.name || "Home").replace(/[^\w\s-]/g, "").trim() || "home";
     const primaryRgb = hexToRgb(pdfBranding.primaryColor, [31, 41, 55]);
     const accentRgb = hexToRgb(pdfBranding.accentColor, [226, 232, 240]);
+    const brandImage = getSelectedBrandImage(pdfBranding);
+    const companyName = pdfBranding.companyName.trim();
+    const isHeaderBanner = brandImage.dataUrl && brandImage.variant === "header";
+    const headerX = brandImage.dataUrl && brandImage.variant === "logo" ? 38 : 14;
     const formatInventoryCondition = (value) =>
       !value || value === "na"
         ? "Not stated / N/A"
         : `${String(value).charAt(0).toUpperCase()}${String(value).slice(1)}`;
     let currentY = 32;
 
-    if (pdfBranding.logoDataUrl) {
+    if (brandImage.dataUrl) {
       try {
-        addContainedImage(doc, pdfBranding.logoDataUrl, 14, 10, 20, 20, "PNG", "left");
+        if (isHeaderBanner) {
+          addContainedImage(doc, brandImage.dataUrl, 14, 8, 182, 24, "PNG", "center");
+        } else {
+          addContainedImage(doc, brandImage.dataUrl, 14, 10, 20, 20, "PNG", "left");
+        }
       } catch {
         // no-op
       }
     }
 
     doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-    doc.setFontSize(18);
-    doc.text(`${home.name} - Property Report`, pdfBranding.logoDataUrl ? 38 : 14, 18);
+    doc.setFontSize(14);
+    doc.text(home.name, headerX, isHeaderBanner ? 40 : 16);
     doc.setFontSize(10);
     doc.setTextColor(90, 90, 90);
-    doc.text(`Generated ${generatedAt}`, pdfBranding.logoDataUrl ? 38 : 14, 24);
-    if (pdfBranding.companyName.trim()) {
-      doc.text(`Prepared by ${pdfBranding.companyName.trim()}`, pdfBranding.logoDataUrl ? 38 : 14, 29);
-      currentY = 36;
+    doc.text("Property Report", headerX, isHeaderBanner ? 46 : 22);
+    doc.text(`Generated ${generatedAt}`, headerX, isHeaderBanner ? 52 : 28);
+    if (companyName) {
+      doc.text(`Prepared by ${companyName}`, headerX, isHeaderBanner ? 57 : 33);
+      currentY = isHeaderBanner ? 64 : 40;
+    } else if (isHeaderBanner) {
+      currentY = 58;
     }
 
     const addSectionHeading = (title) => {
@@ -2001,6 +2158,8 @@ function HomeScreen({
       const drawY = 24;
       const drawWidth = pageWidth - margin * 2;
       const drawHeight = pageHeight - drawY - margin;
+      const wallThicknessMeters = normalizeWallThickness(home.floorplanLayout?.wallThicknessMeters);
+      const wallStrokeWidth = Math.max(0.6, Math.min(3.2, wallThicknessMeters * 7));
 
       const allItems = [
         ...(floor.rooms || []),
@@ -2219,7 +2378,7 @@ function HomeScreen({
         const roomHeightMeters = pixelsToMeters(room.h, 3);
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(0, 0, 0);
-        doc.setLineWidth(1.1);
+        doc.setLineWidth(wallStrokeWidth);
         doc.rect(sx(room.x), sy(room.y), sw(room.w), sw(room.h), "FD");
         doc.setTextColor(30, 30, 30);
         doc.setFontSize(8);
@@ -2398,7 +2557,11 @@ function HomeScreen({
 
       doc.setTextColor(80, 80, 80);
       doc.setFontSize(8);
-      doc.text("Scale approx: 1m grid", drawX + 2, drawY + drawHeight - 3);
+      doc.text(
+        `Scale approx: 1m grid · Wall thickness ${wallThicknessMeters}m`,
+        drawX + 2,
+        drawY + drawHeight - 3
+      );
     };
 
     if (reportSections.fusebox) {
@@ -2476,6 +2639,7 @@ function HomeScreen({
         ["Room", "Floor", "Width", "Height"],
         measurementRows.length ? measurementRows : [["-", "-", "-", "-"]]
       );
+      addTable(["Setting", "Value"], [["Wall thickness", `${normalizeWallThickness(layout.wallThicknessMeters)}m`]]);
 
       layout.floors.forEach((floor) => drawFloorplanPage(floor));
       if (reportSections.gas || reportSections.fire) {
@@ -2489,9 +2653,15 @@ function HomeScreen({
       const gasBody = home.rooms.map((room) => [
         room.name,
         floorNameById[room.floorId] || getDefaultFloorNameById(room.floorId || "floor_1"),
-        home.gasChecks?.[room.id] ? "Recorded" : "Not set",
+        home.gasChecks?.[room.id]?.worksAt ? "Yes" : home.gasChecks?.[room.id]?.recorded ? "Legacy" : "No",
+        formatRecordedTimestamp(home.gasChecks?.[room.id]?.worksAt),
+        home.gasChecks?.[room.id]?.testedAt ? "Yes" : "No",
+        formatRecordedTimestamp(home.gasChecks?.[room.id]?.testedAt),
       ]);
-      addTable(["Room", "Floor", "Gas Status"], gasBody.length ? gasBody : [["-", "-", "No rooms"]]);
+      addTable(
+        ["Room", "Floor", "Works", "Works At", "Tested", "Tested At"],
+        gasBody.length ? gasBody : [["-", "-", "-", "-", "-", "No rooms"]]
+      );
     }
 
     if (reportSections.fire) {
@@ -2499,9 +2669,15 @@ function HomeScreen({
       const fireBody = home.rooms.map((room) => [
         room.name,
         floorNameById[room.floorId] || getDefaultFloorNameById(room.floorId || "floor_1"),
-        home.fireAlarmChecks?.[room.id] ? "Alarm present/checked" : "Not marked",
+        home.fireAlarmChecks?.[room.id]?.worksAt ? "Yes" : home.fireAlarmChecks?.[room.id]?.recorded ? "Legacy" : "No",
+        formatRecordedTimestamp(home.fireAlarmChecks?.[room.id]?.worksAt),
+        home.fireAlarmChecks?.[room.id]?.testedAt ? "Yes" : "No",
+        formatRecordedTimestamp(home.fireAlarmChecks?.[room.id]?.testedAt),
       ]);
-      addTable(["Room", "Floor", "Alarm Status"], fireBody.length ? fireBody : [["-", "-", "No rooms"]]);
+      addTable(
+        ["Room", "Floor", "Works", "Works At", "Tested", "Tested At"],
+        fireBody.length ? fireBody : [["-", "-", "-", "-", "-", "No rooms"]]
+      );
     }
 
     if (reportSections.inventory) {
@@ -3000,6 +3176,27 @@ function HomeScreen({
             </div>
           ) : null}
 
+          <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+            <p className="text-[11px] font-semibold text-zinc-700">Wall thickness</p>
+            <p className="mt-1 text-[11px] text-zinc-500">
+              This is used in the floorplan preview and the exported PDF.
+            </p>
+            <input
+              type="number"
+              min="0.05"
+              max="1"
+              step="0.01"
+              value={normalizeWallThickness(home.floorplanLayout?.wallThicknessMeters)}
+              onChange={(event) =>
+                updateFloorplanLayout({
+                  ...normalizeFloorplanLayout(home.floorplanLayout, home.rooms),
+                  wallThicknessMeters: normalizeWallThickness(event.target.value),
+                })
+              }
+              className="mt-2 h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
+            />
+          </div>
+
           <button
             type="button"
             onClick={() => setFloorplanStep("draw")}
@@ -3077,16 +3274,44 @@ function HomeScreen({
                 <button
                   key={`gas-${room.id}`}
                   type="button"
-                  onClick={() => toggleGasCheck(room.id)}
                   className={`w-full rounded-lg border px-3 py-2 text-left ${
-                    home.gasChecks?.[room.id]
+                    home.gasChecks?.[room.id]?.worksAt || home.gasChecks?.[room.id]?.testedAt
                       ? "border-emerald-300 bg-emerald-50"
                       : "border-zinc-200 bg-zinc-50"
                   }`}
                 >
                   <p className="text-sm font-semibold text-zinc-700">{room.name}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleGasCheck(room.id, "worksAt");
+                      }}
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                        home.gasChecks?.[room.id]?.worksAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
+                      }`}
+                    >
+                      Works
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleGasCheck(room.id, "testedAt");
+                      }}
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                        home.gasChecks?.[room.id]?.testedAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
+                      }`}
+                    >
+                      Tested
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-500">
+                    Works: {formatRecordedTimestamp(home.gasChecks?.[room.id]?.worksAt)}
+                  </p>
                   <p className="text-xs text-zinc-500">
-                    {home.gasChecks?.[room.id] ? "Gas point recorded" : "No gas point set"}
+                    Tested: {formatRecordedTimestamp(home.gasChecks?.[room.id]?.testedAt)}
                   </p>
                 </button>
               ))}
@@ -3109,16 +3334,44 @@ function HomeScreen({
                 <button
                   key={`fire-${room.id}`}
                   type="button"
-                  onClick={() => toggleFireAlarmCheck(room.id)}
                   className={`w-full rounded-lg border px-3 py-2 text-left ${
-                    home.fireAlarmChecks?.[room.id]
+                    home.fireAlarmChecks?.[room.id]?.worksAt || home.fireAlarmChecks?.[room.id]?.testedAt
                       ? "border-emerald-300 bg-emerald-50"
                       : "border-zinc-200 bg-zinc-50"
                   }`}
                 >
                   <p className="text-sm font-semibold text-zinc-700">{room.name}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleFireAlarmCheck(room.id, "worksAt");
+                      }}
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                        home.fireAlarmChecks?.[room.id]?.worksAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
+                      }`}
+                    >
+                      Works
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleFireAlarmCheck(room.id, "testedAt");
+                      }}
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                        home.fireAlarmChecks?.[room.id]?.testedAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
+                      }`}
+                    >
+                      Tested
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-500">
+                    Works: {formatRecordedTimestamp(home.fireAlarmChecks?.[room.id]?.worksAt)}
+                  </p>
                   <p className="text-xs text-zinc-500">
-                    {home.fireAlarmChecks?.[room.id] ? "Alarm present/checked" : "Alarm not marked"}
+                    Tested: {formatRecordedTimestamp(home.fireAlarmChecks?.[room.id]?.testedAt)}
                   </p>
                 </button>
               ))}
@@ -3136,6 +3389,12 @@ function HomeScreen({
               rooms={home.rooms}
               initialReport={home.inventoryReport}
               defaultBranding={pdfBranding}
+              branding={pdfBranding}
+              onBrandingChange={onPdfBrandingChange}
+              onBrandLogoSelected={onPdfLogoSelected}
+              onBrandHeaderLogoSelected={onPdfHeaderLogoSelected}
+              onRemoveBrandLogo={onRemovePdfLogo}
+              onRemoveBrandHeaderLogo={onRemovePdfHeaderLogo}
               onAddRoom={addRoomToHome}
               onReportChange={(report) =>
                 updateHome((prev) => ({
@@ -3158,7 +3417,7 @@ function HomeScreen({
           floorplanPreviewImage={
             marketingBrochure.floorplanSource === "uploaded" ? marketingBrochure.floorplanImage : ""
           }
-          logoImage={pdfBranding.logoDataUrl}
+          logoImage={getSelectedBrandImage(pdfBranding).dataUrl}
           selectedImages={selectedBrochureImages}
           inventoryMedia={inventoryBrochureMedia}
           onBrochureChange={updateMarketingBrochure}
@@ -3167,12 +3426,7 @@ function HomeScreen({
           onFloorplanImageSelected={onBrochureFloorplanSelected}
           onRemoveFloorplanImage={() => updateMarketingBrochure({ floorplanImage: "", floorplanSource: "generated" })}
           onLogoImageSelected={onPdfLogoSelected}
-          onRemoveLogoImage={() =>
-            setPdfBranding((prev) => ({
-              ...prev,
-              logoDataUrl: null,
-            }))
-          }
+          onRemoveLogoImage={onRemovePdfLogo}
           onGalleryImagesSelected={onBrochureGallerySelected}
           onRemoveGalleryImage={removeBrochureGalleryImage}
           onToggleInventoryMedia={toggleInventoryBrochureMedia}
@@ -3241,7 +3495,7 @@ function HomeScreen({
                   type="text"
                   value={pdfBranding.companyName}
                   onChange={(event) =>
-                    setPdfBranding((prev) => ({
+                    onPdfBrandingChange((prev) => ({
                       ...prev,
                       companyName: event.target.value,
                     }))
@@ -3250,13 +3504,47 @@ function HomeScreen({
                   className="h-9 w-full rounded-lg border border-zinc-300 px-3 text-xs"
                 />
                 <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onPdfBrandingChange((prev) => ({
+                        ...prev,
+                        brandImageVariant: "logo",
+                      }))
+                    }
+                    className={`h-9 rounded-lg text-[11px] font-semibold ${
+                      pdfBranding.brandImageVariant === "logo"
+                        ? "bg-zinc-800 text-white"
+                        : "bg-zinc-100 text-zinc-700"
+                    }`}
+                  >
+                    Use Logo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onPdfBrandingChange((prev) => ({
+                        ...prev,
+                        brandImageVariant: "header",
+                      }))
+                    }
+                    className={`h-9 rounded-lg text-[11px] font-semibold ${
+                      pdfBranding.brandImageVariant === "header"
+                        ? "bg-zinc-800 text-white"
+                        : "bg-zinc-100 text-zinc-700"
+                    }`}
+                  >
+                    Use Header Logo
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
                   <label className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600">
                     Primary
                     <input
                       type="color"
                       value={pdfBranding.primaryColor}
                       onChange={(event) =>
-                        setPdfBranding((prev) => ({
+                        onPdfBrandingChange((prev) => ({
                           ...prev,
                           primaryColor: event.target.value,
                         }))
@@ -3270,7 +3558,7 @@ function HomeScreen({
                       type="color"
                       value={pdfBranding.accentColor}
                       onChange={(event) =>
-                        setPdfBranding((prev) => ({
+                        onPdfBrandingChange((prev) => ({
                           ...prev,
                           accentColor: event.target.value,
                         }))
@@ -3292,25 +3580,47 @@ function HomeScreen({
                   {pdfBranding.logoDataUrl ? (
                     <button
                       type="button"
-                      onClick={() =>
-                        setPdfBranding((prev) => ({
-                          ...prev,
-                          logoDataUrl: null,
-                        }))
-                      }
+                      onClick={onRemovePdfLogo}
                       className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700"
                     >
                       Remove Logo
                     </button>
                   ) : null}
+                  <label className="h-9 rounded-lg bg-zinc-700 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-600 flex items-center cursor-pointer">
+                    Upload Header Logo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={onPdfHeaderLogoSelected}
+                    />
+                  </label>
+                  {pdfBranding.headerLogoDataUrl ? (
+                    <button
+                      type="button"
+                      onClick={onRemovePdfHeaderLogo}
+                      className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700"
+                    >
+                      Remove Header Logo
+                    </button>
+                  ) : null}
                 </div>
-                {pdfBranding.logoDataUrl ? (
-                  <img
-                    src={pdfBranding.logoDataUrl}
-                    alt="PDF logo preview"
-                    className="h-12 w-auto rounded border border-zinc-200 bg-white p-1"
-                  />
-                ) : null}
+                <div className="grid grid-cols-2 gap-2">
+                  {pdfBranding.logoDataUrl ? (
+                    <img
+                      src={pdfBranding.logoDataUrl}
+                      alt="PDF logo preview"
+                      className="h-12 w-auto rounded border border-zinc-200 bg-white p-1"
+                    />
+                  ) : null}
+                  {pdfBranding.headerLogoDataUrl ? (
+                    <img
+                      src={pdfBranding.headerLogoDataUrl}
+                      alt="PDF header logo preview"
+                      className="h-12 w-full rounded border border-zinc-200 bg-white p-1 object-contain"
+                    />
+                  ) : null}
+                </div>
               </div>
             </div>
 
@@ -3345,6 +3655,12 @@ function HomesIndex({
   onSignOut,
   onRenameHome,
   userEmail,
+  pdfBranding,
+  onPdfBrandingChange,
+  onPdfLogoSelected,
+  onPdfHeaderLogoSelected,
+  onRemovePdfLogo,
+  onRemovePdfHeaderLogo,
 }) {
   const [newHomeName, setNewHomeName] = useState("");
   const [presetKey, setPresetKey] = useState(HOME_PRESETS[0].key);
@@ -3386,13 +3702,143 @@ function HomesIndex({
 
         <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+            Global PDF Branding
+          </p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Set the default branding image used at the top of exported PDFs.
+          </p>
+          <div className="mt-2 space-y-2">
+            <input
+              value={pdfBranding.companyName}
+              onChange={(event) =>
+                onPdfBrandingChange((prev) => ({
+                  ...prev,
+                  companyName: event.target.value,
+                }))
+              }
+              placeholder="Company name"
+              className="h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm text-zinc-700"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  onPdfBrandingChange((prev) => ({
+                    ...prev,
+                    brandImageVariant: "logo",
+                  }))
+                }
+                className={`h-10 rounded-lg text-[11px] font-semibold ${
+                  pdfBranding.brandImageVariant === "logo"
+                    ? "bg-zinc-800 text-white"
+                    : "bg-zinc-100 text-zinc-700"
+                }`}
+              >
+                Use Logo
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onPdfBrandingChange((prev) => ({
+                    ...prev,
+                    brandImageVariant: "header",
+                  }))
+                }
+                className={`h-10 rounded-lg text-[11px] font-semibold ${
+                  pdfBranding.brandImageVariant === "header"
+                    ? "bg-zinc-800 text-white"
+                    : "bg-zinc-100 text-zinc-700"
+                }`}
+              >
+                Use Header Logo
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600">
+                Primary
+                <input
+                  type="color"
+                  value={pdfBranding.primaryColor}
+                  onChange={(event) =>
+                    onPdfBrandingChange((prev) => ({
+                      ...prev,
+                      primaryColor: event.target.value,
+                    }))
+                  }
+                  className="mt-1 h-8 w-full rounded border border-zinc-200"
+                />
+              </label>
+              <label className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600">
+                Accent
+                <input
+                  type="color"
+                  value={pdfBranding.accentColor}
+                  onChange={(event) =>
+                    onPdfBrandingChange((prev) => ({
+                      ...prev,
+                      accentColor: event.target.value,
+                    }))
+                  }
+                  className="mt-1 h-8 w-full rounded border border-zinc-200"
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="h-10 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white flex items-center cursor-pointer">
+                Upload Logo
+                <input type="file" accept="image/*" className="hidden" onChange={onPdfLogoSelected} />
+              </label>
+              {pdfBranding.logoDataUrl ? (
+                <button
+                  type="button"
+                  onClick={onRemovePdfLogo}
+                  className="h-10 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700"
+                >
+                  Remove Logo
+                </button>
+              ) : null}
+              <label className="h-10 rounded-lg bg-zinc-700 px-3 text-[11px] font-semibold text-white flex items-center cursor-pointer">
+                Upload Header Logo
+                <input type="file" accept="image/*" className="hidden" onChange={onPdfHeaderLogoSelected} />
+              </label>
+              {pdfBranding.headerLogoDataUrl ? (
+                <button
+                  type="button"
+                  onClick={onRemovePdfHeaderLogo}
+                  className="h-10 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700"
+                >
+                  Remove Header Logo
+                </button>
+              ) : null}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {pdfBranding.logoDataUrl ? (
+                <img
+                  src={pdfBranding.logoDataUrl}
+                  alt="PDF logo preview"
+                  className="h-12 w-auto rounded border border-zinc-200 bg-white p-1"
+                />
+              ) : null}
+              {pdfBranding.headerLogoDataUrl ? (
+                <img
+                  src={pdfBranding.headerLogoDataUrl}
+                  alt="PDF header logo preview"
+                  className="h-12 w-full rounded border border-zinc-200 bg-white p-1 object-contain"
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
             Create Home
           </p>
           <div className="mt-2 space-y-2">
             <input
               value={newHomeName}
               onChange={(event) => setNewHomeName(event.target.value)}
-              placeholder="e.g. Mum's House"
+              placeholder="House Address"
               className="h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm text-zinc-700 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
             />
             <select
@@ -3460,6 +3906,7 @@ export default function App() {
   const [activeHomeId, setActiveHomeId] = useState(null);
   const [renameHomeId, setRenameHomeId] = useState(null);
   const [renameHomeName, setRenameHomeName] = useState("");
+  const [pdfBranding, setPdfBranding] = useState(createDefaultPdfBranding());
   const userId = session?.user?.id || null;
 
   useEffect(() => {
@@ -3495,6 +3942,7 @@ export default function App() {
     const localState = loadSavedState(userId);
     setHomes(localState?.homes ?? []);
     setActiveHomeId(null);
+    setPdfBranding(normalizePdfBranding(localState?.pdfBranding));
   }, [userId]);
 
   useEffect(() => {
@@ -3504,6 +3952,7 @@ export default function App() {
     const statePayload = {
       homes,
       activeHomeId,
+      pdfBranding: normalizePdfBranding(pdfBranding),
     };
 
     try {
@@ -3529,13 +3978,14 @@ export default function App() {
           JSON.stringify({
             homes: compactHomes,
             activeHomeId,
+            pdfBranding: normalizePdfBranding(pdfBranding),
           })
         );
       } catch {
         // no-op
       }
     }
-  }, [userId, homes, activeHomeId]);
+  }, [userId, homes, activeHomeId, pdfBranding]);
 
   useEffect(() => {
     if (activeHomeId && !homes.some((home) => home.id === activeHomeId)) {
@@ -3545,6 +3995,46 @@ export default function App() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+  };
+
+  const handlePdfBrandingChange = (mutator) => {
+    setPdfBranding((prev) => normalizePdfBranding(typeof mutator === "function" ? mutator(prev) : mutator));
+  };
+
+  const handlePdfLogoSelected = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const logoDataUrl = await compressImageFileToDataUrl(file, 640, 0.82);
+      handlePdfBrandingChange((prev) => ({
+        ...prev,
+        logoDataUrl,
+        brandImageVariant: "logo",
+      }));
+    } catch {
+      // no-op
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handlePdfHeaderLogoSelected = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const headerLogoDataUrl = await compressImageFileToDataUrl(file, 1400, 0.9);
+      handlePdfBrandingChange((prev) => ({
+        ...prev,
+        headerLogoDataUrl,
+        brandImageVariant: "header",
+      }));
+    } catch {
+      // no-op
+    } finally {
+      event.target.value = "";
+    }
   };
 
   const createHome = (name, presetKey) => {
@@ -3614,6 +4104,22 @@ export default function App() {
       onSignOut={handleSignOut}
       onRenameHome={openRenameHome}
       userEmail={session.user?.email}
+      pdfBranding={pdfBranding}
+      onPdfBrandingChange={handlePdfBrandingChange}
+      onPdfLogoSelected={handlePdfLogoSelected}
+      onPdfHeaderLogoSelected={handlePdfHeaderLogoSelected}
+      onRemovePdfLogo={() =>
+        handlePdfBrandingChange((prev) => ({
+          ...prev,
+          logoDataUrl: null,
+        }))
+      }
+      onRemovePdfHeaderLogo={() =>
+        handlePdfBrandingChange((prev) => ({
+          ...prev,
+          headerLogoDataUrl: null,
+        }))
+      }
     />
   ) : (
     <HomeScreen
@@ -3624,6 +4130,22 @@ export default function App() {
       onUpdateHome={(mutator) => updateHome(activeHome.id, mutator)}
       onDeleteHome={deleteHome}
       onRenameHome={openRenameHome}
+      pdfBranding={pdfBranding}
+      onPdfBrandingChange={handlePdfBrandingChange}
+      onPdfLogoSelected={handlePdfLogoSelected}
+      onPdfHeaderLogoSelected={handlePdfHeaderLogoSelected}
+      onRemovePdfLogo={() =>
+        handlePdfBrandingChange((prev) => ({
+          ...prev,
+          logoDataUrl: null,
+        }))
+      }
+      onRemovePdfHeaderLogo={() =>
+        handlePdfBrandingChange((prev) => ({
+          ...prev,
+          headerLogoDataUrl: null,
+        }))
+      }
     />
   );
 

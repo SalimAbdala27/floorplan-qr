@@ -1,0 +1,636 @@
+.brochure-shell {
+  --brochure-accent: #0f766e;
+  --brochure-accent-soft: color-mix(in srgb, var(--brochure-accent) 14%, white);
+  --brochure-accent-strong: color-mix(in srgb, var(--brochure-accent) 82%, black);
+  --brochure-border: rgba(15, 23, 42, 0.08);
+  --brochure-shadow: 0 22px 60px rgba(15, 23, 42, 0.12);
+  --brochure-text: #0f172a;
+  --brochure-muted: #5b6475;
+  --brochure-surface: rgba(255, 255, 255, 0.96);
+  --brochure-surface-strong: #ffffff;
+  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  color: var(--brochure-text);
+}
+
+.brochure-root {
+  position: relative;
+  overflow: hidden;
+  border-radius: 32px;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--brochure-accent) 18%, white) 0, transparent 28%),
+    linear-gradient(180deg, #fffdf9 0%, #f6f8fb 52%, #eef3f8 100%);
+  box-shadow: var(--brochure-shadow);
+}
+
+.brochure-root::before {
+  content: "";
+  position: absolute;
+  inset: 24px auto auto -110px;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brochure-accent) 10%, white);
+  filter: blur(4px);
+  pointer-events: none;
+}
+
+.brochure-stack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 18px;
+}
+
+.brochure-card {
+  border: 1px solid var(--brochure-border);
+  border-radius: 24px;
+  background: var(--brochure-surface);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.brochure-section {
+  padding: 22px;
+}
+
+.brochure-kicker {
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--brochure-accent-strong);
+}
+
+.brochure-section-title {
+  margin-top: 8px;
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.brochure-section-copy {
+  margin-top: 10px;
+  color: var(--brochure-muted);
+  line-height: 1.7;
+}
+
+.brochure-hero {
+  position: relative;
+  min-height: 520px;
+  display: flex;
+  align-items: flex-end;
+  padding: 24px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.08) 0%, rgba(15, 23, 42, 0.72) 78%),
+    linear-gradient(135deg, color-mix(in srgb, var(--brochure-accent) 55%, #08111f) 0%, #08111f 100%);
+}
+
+.brochure-hero-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.brochure-hero-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(5, 10, 18, 0.18) 0%, rgba(5, 10, 18, 0.28) 35%, rgba(5, 10, 18, 0.84) 100%),
+    linear-gradient(90deg, rgba(8, 17, 31, 0.7) 0%, rgba(8, 17, 31, 0.1) 55%, rgba(8, 17, 31, 0.45) 100%);
+}
+
+.brochure-hero-fallback {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--brochure-accent) 38%, white) 0, transparent 34%),
+    linear-gradient(140deg, color-mix(in srgb, var(--brochure-accent) 60%, #122033) 0%, #08111f 80%);
+}
+
+.brochure-hero-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  color: white;
+}
+
+.brochure-brandbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brochure-brandmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.brochure-brandmark img {
+  max-height: 32px;
+  width: auto;
+  display: block;
+}
+
+.brochure-brandcopy {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.brochure-price-pill {
+  padding: 12px 16px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--brochure-accent) 55%, rgba(255, 255, 255, 0.14));
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 28px rgba(5, 10, 18, 0.18);
+}
+
+.brochure-price-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.brochure-price-value {
+  margin-top: 6px;
+  font-size: clamp(1.45rem, 2vw, 2.3rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.brochure-hero-body {
+  max-width: 740px;
+}
+
+.brochure-hero-title {
+  margin-top: 10px;
+  font-size: clamp(2.35rem, 5vw, 4.8rem);
+  line-height: 0.95;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  text-wrap: balance;
+}
+
+.brochure-hero-location {
+  margin-top: 14px;
+  max-width: 620px;
+  font-size: clamp(1rem, 2vw, 1.15rem);
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.brochure-hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.brochure-hero-badge {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(12px);
+  font-size: 0.83rem;
+  font-weight: 600;
+}
+
+.brochure-overview-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.brochure-description-card {
+  padding: 22px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(246, 248, 251, 0.95) 100%);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.brochure-description {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  font-size: 1rem;
+  line-height: 1.85;
+  color: var(--brochure-muted);
+}
+
+.brochure-feature-list {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.brochure-feature-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: white;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  color: var(--brochure-text);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.brochure-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.brochure-stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.brochure-stat-card,
+.brochure-meta-card {
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--brochure-surface-strong);
+  border: 1px solid rgba(15, 23, 42, 0.07);
+}
+
+.brochure-stat-icon {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: var(--brochure-accent-strong);
+  background: var(--brochure-accent-soft);
+}
+
+.brochure-stat-value {
+  margin-top: 18px;
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.brochure-stat-label,
+.brochure-meta-label {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--brochure-muted);
+}
+
+.brochure-meta-value {
+  margin-top: 10px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.brochure-gallery-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.brochure-gallery-grid {
+  margin-top: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.brochure-gallery-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  min-height: 220px;
+  background: linear-gradient(135deg, #d8dee8 0%, #eff3f8 100%);
+}
+
+.brochure-gallery-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 240ms ease;
+}
+
+.brochure-gallery-card:hover img {
+  transform: scale(1.04);
+}
+
+.brochure-gallery-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 18%, rgba(15, 23, 42, 0.64) 100%);
+}
+
+.brochure-gallery-copy {
+  position: absolute;
+  inset: auto 16px 16px 16px;
+  z-index: 1;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  color: white;
+}
+
+.brochure-gallery-room {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.brochure-gallery-type {
+  margin-top: 4px;
+  font-size: 0.74rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.brochure-360-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brochure-accent) 60%, rgba(255, 255, 255, 0.16));
+  color: white;
+  font-size: 0.78rem;
+  font-weight: 700;
+  backdrop-filter: blur(12px);
+}
+
+.brochure-floorplan-card {
+  padding: 22px;
+  border-radius: 26px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+  text-align: center;
+}
+
+.brochure-floorplan-media {
+  margin-top: 22px;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: white;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.brochure-floorplan-media img {
+  width: 100%;
+  height: auto;
+  max-height: 520px;
+  object-fit: contain;
+}
+
+.brochure-room-list {
+  margin-top: 22px;
+  display: grid;
+  gap: 12px;
+}
+
+.brochure-room-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.brochure-room-name {
+  font-weight: 700;
+  color: var(--brochure-text);
+}
+
+.brochure-room-floor {
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: var(--brochure-muted);
+}
+
+.brochure-room-size {
+  white-space: nowrap;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--brochure-accent-strong);
+}
+
+.brochure-contact {
+  position: relative;
+  overflow: hidden;
+  color: white;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.16) 0, transparent 24%),
+    linear-gradient(135deg, color-mix(in srgb, var(--brochure-accent) 72%, #08111f) 0%, #08111f 100%);
+}
+
+.brochure-contact-grid {
+  display: grid;
+  gap: 24px;
+}
+
+.brochure-cta-title {
+  margin-top: 10px;
+  font-size: clamp(1.9rem, 3.2vw, 3rem);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+}
+
+.brochure-cta-copy {
+  margin-top: 12px;
+  max-width: 560px;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.brochure-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 22px;
+  margin-top: 24px;
+  border-radius: 999px;
+  border: none;
+  background: white;
+  color: var(--brochure-accent-strong);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  box-shadow: 0 16px 28px rgba(0, 0, 0, 0.16);
+}
+
+.brochure-contact-panel {
+  padding: 20px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(14px);
+}
+
+.brochure-contact-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.brochure-contact-logo img {
+  max-height: 32px;
+  width: auto;
+  display: block;
+}
+
+.brochure-contact-list {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.brochure-contact-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: white;
+}
+
+.brochure-contact-icon {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.brochure-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  border-radius: 22px;
+  border: 1px dashed rgba(15, 23, 42, 0.12);
+  color: var(--brochure-muted);
+  background: rgba(255, 255, 255, 0.72);
+  text-align: center;
+  padding: 24px;
+}
+
+.brochure-divider {
+  width: 64px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--brochure-accent) 0%, color-mix(in srgb, var(--brochure-accent) 28%, white) 100%);
+  margin-top: 14px;
+}
+
+@media (min-width: 768px) {
+  .brochure-stack {
+    gap: 36px;
+    padding: 24px;
+  }
+
+  .brochure-section {
+    padding: 30px;
+  }
+
+  .brochure-overview-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  }
+
+  .brochure-gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .brochure-gallery-card--featured {
+    grid-column: span 2;
+    min-height: 320px;
+  }
+
+  .brochure-contact-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+    align-items: end;
+  }
+}
+
+@media (min-width: 1100px) {
+  .brochure-gallery-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .brochure-gallery-card--featured {
+    grid-column: span 2;
+    grid-row: span 2;
+    min-height: 456px;
+  }
+}
+
+@media (max-width: 767px) {
+  .brochure-root {
+    border-radius: 26px;
+  }
+
+  .brochure-hero {
+    min-height: 440px;
+    padding: 18px;
+  }
+
+  .brochure-brandbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .brochure-price-pill {
+    width: 100%;
+  }
+
+  .brochure-stat-row {
+    grid-template-columns: 1fr;
+  }
+
+  .brochure-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .brochure-gallery-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .brochure-room-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

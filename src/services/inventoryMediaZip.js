@@ -36,6 +36,13 @@ function getFileName(media, roomName, index) {
   return `${sanitizeSegment(roomName, "room")}_${assigned || typeLabel}_${index + 1}.${extension}`;
 }
 
+function getTimestampSegment(value) {
+  if (!value) return "undated";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "undated";
+  return date.toISOString().replace(/[:]/g, "-").replace(/\..+/, "");
+}
+
 function dataUrlToUint8Array(dataUrl) {
   const value = String(dataUrl || "");
   const commaIndex = value.indexOf(",");
@@ -64,17 +71,28 @@ function triggerBlobDownload(blob, fileName) {
 
 export function downloadInventoryMediaZip(report, roomsById = {}, propertyName = "property") {
   const zipEntries = {};
+  const manifestLines = [`Property: ${propertyName}`, `Generated: ${new Date().toISOString()}`, ""];
 
   (report?.rooms || []).forEach((roomInventory) => {
     const roomName = roomsById[roomInventory.roomId]?.name || roomInventory.roomId || "room";
     const roomFolder = sanitizeSegment(roomName, "room");
+    manifestLines.push(`[${roomName}]`);
 
     (roomInventory.media || []).forEach((media, index) => {
       const imageData = media.originalUrl || media.url || media.preview || "";
       if (!String(imageData).startsWith("data:image")) return;
       const fileName = getFileName(media, roomName, index);
-      zipEntries[`${roomFolder}/${fileName}`] = dataUrlToUint8Array(imageData);
+      const typeFolder = media.type === "pano" ? "panoramas" : "photos";
+      const assignmentFolder = sanitizeSegment(media.assignment || "unassigned", "unassigned");
+      const timestamp = getTimestampSegment(media.capturedAt);
+      const organizedName = `${timestamp}_${fileName}`;
+      zipEntries[`${roomFolder}/${typeFolder}/${assignmentFolder}/${organizedName}`] = dataUrlToUint8Array(imageData);
+      manifestLines.push(
+        `${typeFolder}/${assignmentFolder}/${organizedName} | captured ${media.capturedAt || "unknown"} | assigned ${media.assignment || "Unassigned"}`
+      );
     });
+
+    manifestLines.push("");
   });
 
   const fileCount = Object.keys(zipEntries).length;
@@ -82,6 +100,7 @@ export function downloadInventoryMediaZip(report, roomsById = {}, propertyName =
     throw new Error("No uploaded images available to zip");
   }
 
+  zipEntries["README_inventory_zip.txt"] = new TextEncoder().encode(manifestLines.join("\n"));
   const zipBytes = zipSync(zipEntries, { level: 0 });
   const zipBlob = new Blob([zipBytes], { type: "application/zip" });
   const safePropertyName = sanitizeSegment(propertyName, "property");
