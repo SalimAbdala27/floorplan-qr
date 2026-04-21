@@ -29,6 +29,7 @@ export default function InventoryRoom({
   onCaptureDetailPhoto,
   onApplyQuickCondition,
   onUpdateMedia,
+  onSelectPanorama,
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [selectedMediaIds, setSelectedMediaIds] = useState([]);
@@ -45,6 +46,10 @@ export default function InventoryRoom({
     const roomItemNames = (roomInventory.items || []).map((item) => item.name).filter(Boolean);
     return Array.from(new Set([...MEDIA_ASSIGNMENT_OPTIONS, ...roomItemNames]));
   }, [roomInventory.items]);
+  const panoramaMedia = useMemo(
+    () => (roomInventory.media || []).filter((media) => media.type === "pano"),
+    [roomInventory.media]
+  );
   const selectedCount = selectedMediaIds.length;
 
   useEffect(() => {
@@ -103,8 +108,8 @@ export default function InventoryRoom({
         <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-2">
           <p className="text-[11px] font-semibold text-zinc-700">Panorama Guide</p>
           <p className="mt-1 text-[11px] text-zinc-500">
-            Upload an existing panoramic image for the room. For best results, stand in the doorway or centre of the
-            room when the panorama is taken so it shows as much of the space as possible.
+            For one panorama, stand near the middle or doorway and turn a little faster so you capture the full 360 in
+            one go. If that is difficult, take two panoramas more carefully from opposite sides of the room and you can have a look at both in the main viewer.
           </p>
         </div>
         <MediaUploader
@@ -119,6 +124,11 @@ export default function InventoryRoom({
 
       {primaryPanoSrc ? (
         <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 p-2">
+          {panoramaMedia.length > 1 ? (
+            <p className="mb-2 text-[11px] text-zinc-500">
+              {panoramaMedia.length} panoramas uploaded. Use the room cards below to choose which one appears in the main viewer.
+            </p>
+          ) : null}
           <p className="text-xs font-semibold text-zinc-700">Quick Condition</p>
           <div className="mt-2 grid grid-cols-3 gap-1">
             {[
@@ -206,7 +216,7 @@ export default function InventoryRoom({
 
       <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
         {roomInventory.media.map((media) => (
-          <div key={media.id} className="rounded-lg border border-zinc-200 p-2">
+          <div key={media.id} className="rounded-xl border border-zinc-200 bg-white p-2 shadow-sm">
             <label className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-zinc-700">
               <input
                 type="checkbox"
@@ -216,16 +226,41 @@ export default function InventoryRoom({
               />
               Select for bulk assign
             </label>
+            <div className="overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
+              {media.type === "pano" ? (
+                <PanoViewer src={media.preview || media.url} alt="Panorama" heightClass="h-48" />
+              ) : (
+                <div className="flex h-48 items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.9),_rgba(244,244,245,0.92)_55%,_rgba(228,228,231,0.96))] p-2">
+                  <img
+                    src={media.preview || media.url}
+                    alt={media.assignment ? `${media.assignment} inventory` : "Inventory"}
+                    loading="lazy"
+                    className="max-h-full w-full rounded-lg object-contain"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold text-zinc-700">
+                {media.assignment || "Unassigned"}
+              </p>
+              <span className="rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                {media.type === "pano" ? "360" : "Photo"}
+              </span>
+            </div>
             {media.type === "pano" ? (
-              <PanoViewer src={media.preview || media.url} alt="Panorama" heightClass="h-40" />
-            ) : (
-              <img
-                src={media.preview || media.url}
-                alt="Inventory"
-                loading="lazy"
-                className="h-28 w-full rounded border border-zinc-200 object-cover"
-              />
-            )}
+              <button
+                type="button"
+                onClick={() => onSelectPanorama?.(media.preview || media.url || "")}
+                className={`mt-2 h-9 w-full rounded-lg text-[11px] font-semibold ${
+                  (media.preview || media.url || "") === primaryPanoSrc
+                    ? "bg-zinc-800 text-white"
+                    : "bg-zinc-200 text-zinc-700"
+                }`}
+              >
+                {(media.preview || media.url || "") === primaryPanoSrc ? "Showing In Main Viewer" : "Show In Main Viewer"}
+              </button>
+            ) : null}
             <p className="mt-2 text-[11px] text-zinc-500">
               Photo date: {media.capturedAt ? new Date(media.capturedAt).toLocaleString() : "Not recorded"}
             </p>

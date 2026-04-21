@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import InventoryRoom from "./InventoryRoom.jsx";
 import DeclarationForm from "./DeclarationForm.jsx";
+import LegionellaAssessment from "./LegionellaAssessment.jsx";
 import {
   useInventoryStore,
   initializeInventoryReport,
@@ -14,6 +15,7 @@ import {
   removeRoomMedia,
   updateRoomMedia,
   capturePanoramaForRoom,
+  setRoomPanoramaImage,
   applyRoomConditionToAll,
   validateInventoryReport,
   getRoomCompletion,
@@ -72,6 +74,14 @@ const CHECK_FIELDS = [
   },
 ];
 
+const INVENTORY_SECTIONS = [
+  { key: "rooms", label: "Rooms & Photos" },
+  { key: "summary", label: "Summary" },
+  { key: "legionella", label: "Legionella" },
+  { key: "declaration", label: "Declaration" },
+  { key: "branding", label: "Branding & Export" },
+];
+
 export default function InventoryFlow({
   propertyId,
   propertyName,
@@ -94,6 +104,8 @@ export default function InventoryFlow({
   const [newRoomFloorId, setNewRoomFloorId] = useState("floor_1");
   const [downloadZipBusy, setDownloadZipBusy] = useState(false);
   const [downloadZipMessage, setDownloadZipMessage] = useState("");
+  const [activeSection, setActiveSection] = useState("rooms");
+  const [includeLegionellaInPdf, setIncludeLegionellaInPdf] = useState(false);
   const inventoryBranding = branding || defaultBranding || {
     companyName: "",
     primaryColor: "#1f2937",
@@ -163,6 +175,7 @@ export default function InventoryFlow({
     if (!roomId) return;
     setNewRoomName("");
     setActiveRoom(roomId);
+    setActiveSection("rooms");
   };
 
   if (!currentReport) {
@@ -245,7 +258,10 @@ export default function InventoryFlow({
               <button
                 key={`inv-room-${roomInventory.roomId}`}
                 type="button"
-                onClick={() => setActiveRoom(roomInventory.roomId)}
+                onClick={() => {
+                  setActiveRoom(roomInventory.roomId);
+                  setActiveSection("rooms");
+                }}
                 className={`shrink-0 rounded-lg border px-3 py-2 text-left ${
                   roomInventory.roomId === activeRoomInventory?.roomId
                     ? "border-zinc-700 bg-zinc-100"
@@ -262,7 +278,27 @@ export default function InventoryFlow({
         </div>
       </div>
 
-      {activeRoomInventory ? (
+      <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap gap-2">
+          {INVENTORY_SECTIONS.map((section) => {
+            const active = section.key === activeSection;
+            return (
+              <button
+                key={section.key}
+                type="button"
+                onClick={() => setActiveSection(section.key)}
+                className={`rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                  active ? "bg-zinc-800 text-white" : "bg-zinc-100 text-zinc-600"
+                }`}
+              >
+                {section.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {activeSection === "rooms" && activeRoomInventory ? (
         <InventoryRoom
           room={roomsById[activeRoomInventory.roomId]}
           roomInventory={activeRoomInventory}
@@ -272,257 +308,299 @@ export default function InventoryFlow({
           onCapturePanorama={(media) => capturePanoramaForRoom(activeRoomInventory.roomId, media)}
           onCaptureDetailPhoto={(media) => addRoomMedia(activeRoomInventory.roomId, media)}
           onUpdateMedia={(mediaId, patch) => updateRoomMedia(activeRoomInventory.roomId, mediaId, patch)}
+          onSelectPanorama={(panoramaImage) => setRoomPanoramaImage(activeRoomInventory.roomId, panoramaImage)}
           onApplyQuickCondition={(condition) =>
             applyRoomConditionToAll(activeRoomInventory.roomId, condition)
           }
         />
       ) : null}
 
-      <DeclarationForm
-        declaration={currentReport.declaration}
-        onChange={(declaration) => updateInventoryReportMeta({ declaration })}
-      />
-
-      <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Summary</p>
-        <div className="mt-3 rounded-xl border border-zinc-200 p-3">
-          <p className="text-sm font-semibold text-zinc-800">General condition</p>
-          <div className="mt-3 space-y-4">
-            {SUMMARY_FIELDS.map((field) => (
-              <div key={field.key}>
-                <p className="text-xs text-zinc-600">{field.label}</p>
-                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  {SUMMARY_OPTIONS.map((option) => {
-                    const active = currentReport.summary?.[field.key] === option.key;
-                    return (
-                      <button
-                        key={`${field.key}-${option.key}`}
-                        type="button"
-                        onClick={() => updateInventorySummary(field.key, option.key)}
-                        className={`rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                          active ? "bg-zinc-800 text-white" : "bg-zinc-100 text-zinc-600"
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-3 rounded-xl border border-zinc-200 p-3">
-          <p className="text-sm font-semibold text-zinc-800">Checks</p>
-          <div className="mt-3 space-y-4">
-            {CHECK_FIELDS.map((field) => (
-              <div key={field.key}>
-                <p className="text-xs text-zinc-600">{field.label}</p>
-                <div className={`mt-2 grid gap-2 ${field.options.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
-                  {field.options.map((option) => {
-                    const active = currentReport.checks?.[field.key] === option.key;
-                    return (
-                      <button
-                        key={`${field.key}-${option.key}`}
-                        type="button"
-                        onClick={() => updateInventoryCheck(field.key, option.key)}
-                        className={`rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                          active ? "bg-zinc-800 text-white" : "bg-zinc-100 text-zinc-600"
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <div className="rounded-xl border border-zinc-200 p-3">
+      {activeSection === "summary" ? (
+        <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Summary</p>
+          <div className="mt-3 rounded-xl border border-zinc-200 p-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
-              Additional Notes
-            </p>
-            <textarea
-              value={currentReport.additionalNotes || ""}
-              onChange={(event) => updateInventoryReportMeta({ additionalNotes: event.target.value })}
-              placeholder="Any extra observations or context for this report."
-              className="mt-3 min-h-[120px] w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="rounded-xl border border-zinc-200 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
-              Report Conducted By
+              Property Address
             </p>
             <input
               type="text"
-              value={currentReport.conductedBy || ""}
-              onChange={(event) => updateInventoryReportMeta({ conductedBy: event.target.value })}
-              placeholder="e.g. Jane Doe"
+              value={currentReport.propertyAddress || ""}
+              onChange={(event) => updateInventoryReportMeta({ propertyAddress: event.target.value })}
+              placeholder="Full property address for the inventory PDF"
               className="mt-3 h-11 w-full rounded-lg border border-zinc-300 px-3 text-sm"
             />
           </div>
-        </div>
-      </div>
+          <div className="mt-3 rounded-xl border border-zinc-200 p-3">
+            <p className="text-sm font-semibold text-zinc-800">General condition</p>
+            <div className="mt-3 space-y-4">
+              {SUMMARY_FIELDS.map((field) => (
+                <div key={field.key}>
+                  <p className="text-xs text-zinc-600">{field.label}</p>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {SUMMARY_OPTIONS.map((option) => {
+                      const active = currentReport.summary?.[field.key] === option.key;
+                      return (
+                        <button
+                          key={`${field.key}-${option.key}`}
+                          type="button"
+                          onClick={() => updateInventorySummary(field.key, option.key)}
+                          className={`rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                            active ? "bg-zinc-800 text-white" : "bg-zinc-100 text-zinc-600"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
-      <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-        <p className="text-xs font-semibold text-zinc-700">PDF Branding</p>
-        <div className="mt-2 space-y-2">
-          <input
-            type="text"
-            value={inventoryBranding.companyName}
-            onChange={(event) =>
-              onBrandingChange?.((prev) => ({
-                ...prev,
-                companyName: event.target.value,
-              }))
-            }
-            placeholder="Company name"
-            className="h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                onBrandingChange?.((prev) => ({
-                  ...prev,
-                  brandImageVariant: "logo",
-                }))
-              }
-              className={`h-9 rounded-lg text-[11px] font-semibold ${
-                inventoryBranding.brandImageVariant === "logo"
-                  ? "bg-zinc-800 text-white"
-                  : "bg-zinc-100 text-zinc-700"
-              }`}
-            >
-              Use Logo
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                onBrandingChange?.((prev) => ({
-                  ...prev,
-                  brandImageVariant: "header",
-                }))
-              }
-              className={`h-9 rounded-lg text-[11px] font-semibold ${
-                inventoryBranding.brandImageVariant === "header"
-                  ? "bg-zinc-800 text-white"
-                  : "bg-zinc-100 text-zinc-700"
-              }`}
-            >
-              Use Header Logo
-            </button>
+          <div className="mt-3 rounded-xl border border-zinc-200 p-3">
+            <p className="text-sm font-semibold text-zinc-800">Checks</p>
+            <div className="mt-3 space-y-4">
+              {CHECK_FIELDS.map((field) => (
+                <div key={field.key}>
+                  <p className="text-xs text-zinc-600">{field.label}</p>
+                  <div className={`mt-2 grid gap-2 ${field.options.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+                    {field.options.map((option) => {
+                      const active = currentReport.checks?.[field.key] === option.key;
+                      return (
+                        <button
+                          key={`${field.key}-${option.key}`}
+                          type="button"
+                          onClick={() => updateInventoryCheck(field.key, option.key)}
+                          className={`rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                            active ? "bg-zinc-800 text-white" : "bg-zinc-100 text-zinc-600"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              type="color"
-              value={inventoryBranding.primaryColor}
-              onChange={(event) =>
-                onBrandingChange?.((prev) => ({
-                  ...prev,
-                  primaryColor: event.target.value,
-                }))
-              }
-              className="h-9 w-full rounded border border-zinc-300"
-            />
-            <input
-              type="color"
-              value={inventoryBranding.accentColor}
-              onChange={(event) =>
-                onBrandingChange?.((prev) => ({
-                  ...prev,
-                  accentColor: event.target.value,
-                }))
-              }
-              className="h-9 w-full rounded border border-zinc-300"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700 flex items-center cursor-pointer">
-              Upload Logo
-              <input type="file" accept="image/*" className="hidden" onChange={onBrandLogoSelected} />
-            </label>
-            {inventoryBranding.logoDataUrl ? (
-              <button
-                type="button"
-                onClick={onRemoveBrandLogo}
-                className="h-9 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
-              >
-                Remove
-              </button>
-            ) : null}
-            <label className="h-9 rounded-lg bg-zinc-700 px-3 text-[11px] font-semibold text-white flex items-center cursor-pointer">
-              Upload Header Logo
-              <input type="file" accept="image/*" className="hidden" onChange={onBrandHeaderLogoSelected} />
-            </label>
-            {inventoryBranding.headerLogoDataUrl ? (
-              <button
-                type="button"
-                onClick={onRemoveBrandHeaderLogo}
-                className="h-9 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
-              >
-                Remove Header
-              </button>
-            ) : null}
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {inventoryBranding.logoDataUrl ? (
-              <img
-                src={inventoryBranding.logoDataUrl}
-                alt="PDF logo preview"
-                className="h-12 w-auto rounded border border-zinc-200 bg-white p-1"
-              />
-            ) : null}
-            {inventoryBranding.headerLogoDataUrl ? (
-              <img
-                src={inventoryBranding.headerLogoDataUrl}
-                alt="PDF header logo preview"
-                className="h-12 w-full rounded border border-zinc-200 bg-white p-1 object-contain"
-              />
-            ) : null}
-          </div>
-        </div>
-      </div>
 
-      <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-xs font-semibold text-zinc-700">Validation</p>
-            <p className="text-xs text-zinc-500">
-              {validation.valid ? "Report ready for export" : `${validation.missing.length} room(s) incomplete`}
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">{uploadedImageCount} uploaded image(s) available</p>
-            {downloadZipMessage ? (
-              <p className="mt-1 text-[11px] text-zinc-600">{downloadZipMessage}</p>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleDownloadImageZip}
-              disabled={downloadZipBusy || uploadedImageCount === 0}
-              className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {downloadZipBusy ? "Preparing ZIP..." : "Download Full-Res ZIP"}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                generateInventoryPdf(currentReport, roomsById, propertyName, {
-                  branding: inventoryBranding,
-                })
-              }
-              className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white"
-            >
-              Export Inventory PDF
-            </button>
+          <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-zinc-200 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+                Additional Notes
+              </p>
+              <textarea
+                value={currentReport.additionalNotes || ""}
+                onChange={(event) => updateInventoryReportMeta({ additionalNotes: event.target.value })}
+                placeholder="Any extra observations or context for this report."
+                className="mt-3 min-h-[120px] w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="rounded-xl border border-zinc-200 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+                Report Conducted By
+              </p>
+              <input
+                type="text"
+                value={currentReport.conductedBy || ""}
+                onChange={(event) => updateInventoryReportMeta({ conductedBy: event.target.value })}
+                placeholder="e.g. Jane Doe"
+                className="mt-3 h-11 w-full rounded-lg border border-zinc-300 px-3 text-sm"
+              />
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
+
+      {activeSection === "legionella" ? (
+        <LegionellaAssessment
+          assessment={currentReport.legionella}
+          propertyName={propertyName}
+          propertyAddress={currentReport.propertyAddress || ""}
+          branding={inventoryBranding}
+          onChange={(legionella) => updateInventoryReportMeta({ legionella })}
+          onSyncPropertyAddress={(propertyAddress) => updateInventoryReportMeta({ propertyAddress })}
+        />
+      ) : null}
+
+      {activeSection === "declaration" ? (
+        <DeclarationForm
+          declaration={currentReport.declaration}
+          onChange={(declaration) => updateInventoryReportMeta({ declaration })}
+        />
+      ) : null}
+
+      {activeSection === "branding" ? (
+        <>
+          <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+            <p className="text-xs font-semibold text-zinc-700">PDF Branding</p>
+            <div className="mt-2 space-y-2">
+              <input
+                type="text"
+                value={inventoryBranding.companyName}
+                onChange={(event) =>
+                  onBrandingChange?.((prev) => ({
+                    ...prev,
+                    companyName: event.target.value,
+                  }))
+                }
+                placeholder="Company name"
+                className="h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    onBrandingChange?.((prev) => ({
+                      ...prev,
+                      brandImageVariant: "logo",
+                    }))
+                  }
+                  className={`h-9 rounded-lg text-[11px] font-semibold ${
+                    inventoryBranding.brandImageVariant === "logo"
+                      ? "bg-zinc-800 text-white"
+                      : "bg-zinc-100 text-zinc-700"
+                  }`}
+                >
+                  Use Logo
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onBrandingChange?.((prev) => ({
+                      ...prev,
+                      brandImageVariant: "header",
+                    }))
+                  }
+                  className={`h-9 rounded-lg text-[11px] font-semibold ${
+                    inventoryBranding.brandImageVariant === "header"
+                      ? "bg-zinc-800 text-white"
+                      : "bg-zinc-100 text-zinc-700"
+                  }`}
+                >
+                  Use Header Logo
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="color"
+                  value={inventoryBranding.primaryColor}
+                  onChange={(event) =>
+                    onBrandingChange?.((prev) => ({
+                      ...prev,
+                      primaryColor: event.target.value,
+                    }))
+                  }
+                  className="h-9 w-full rounded border border-zinc-300"
+                />
+                <input
+                  type="color"
+                  value={inventoryBranding.accentColor}
+                  onChange={(event) =>
+                    onBrandingChange?.((prev) => ({
+                      ...prev,
+                      accentColor: event.target.value,
+                    }))
+                  }
+                  className="h-9 w-full rounded border border-zinc-300"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="flex h-9 cursor-pointer items-center rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700">
+                  Upload Logo
+                  <input type="file" accept="image/*" className="hidden" onChange={onBrandLogoSelected} />
+                </label>
+                {inventoryBranding.logoDataUrl ? (
+                  <button
+                    type="button"
+                    onClick={onRemoveBrandLogo}
+                    className="h-9 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
+                  >
+                    Remove
+                  </button>
+                ) : null}
+                <label className="flex h-9 cursor-pointer items-center rounded-lg bg-zinc-700 px-3 text-[11px] font-semibold text-white">
+                  Upload Header Logo
+                  <input type="file" accept="image/*" className="hidden" onChange={onBrandHeaderLogoSelected} />
+                </label>
+                {inventoryBranding.headerLogoDataUrl ? (
+                  <button
+                    type="button"
+                    onClick={onRemoveBrandHeaderLogo}
+                    className="h-9 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
+                  >
+                    Remove Header
+                  </button>
+                ) : null}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {inventoryBranding.logoDataUrl ? (
+                  <img
+                    src={inventoryBranding.logoDataUrl}
+                    alt="PDF logo preview"
+                    className="h-12 w-auto rounded border border-zinc-200 bg-white p-1"
+                  />
+                ) : null}
+                {inventoryBranding.headerLogoDataUrl ? (
+                  <img
+                    src={inventoryBranding.headerLogoDataUrl}
+                    alt="PDF header logo preview"
+                    className="h-12 w-full rounded border border-zinc-200 bg-white p-1 object-contain"
+                  />
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold text-zinc-700">Validation</p>
+                <p className="text-xs text-zinc-500">
+                  {validation.valid ? "Report ready for export" : `${validation.missing.length} room(s) incomplete`}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">{uploadedImageCount} uploaded image(s) available</p>
+                <label className="mt-2 flex items-center gap-2 text-[11px] font-medium text-zinc-600">
+                  <input
+                    type="checkbox"
+                    checked={includeLegionellaInPdf}
+                    onChange={(event) => setIncludeLegionellaInPdf(event.target.checked)}
+                    className="h-4 w-4 rounded border-zinc-300 accent-zinc-800"
+                  />
+                  Include Legionella assessment in inventory PDF
+                </label>
+                {downloadZipMessage ? (
+                  <p className="mt-1 text-[11px] text-zinc-600">{downloadZipMessage}</p>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadImageZip}
+                  disabled={downloadZipBusy || uploadedImageCount === 0}
+                  className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {downloadZipBusy ? "Preparing ZIP..." : "Download Full-Res ZIP"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    generateInventoryPdf(currentReport, roomsById, propertyName, {
+                      branding: inventoryBranding,
+                      includeLegionella: includeLegionellaInPdf,
+                    })
+                  }
+                  className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white"
+                >
+                  Export Inventory PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

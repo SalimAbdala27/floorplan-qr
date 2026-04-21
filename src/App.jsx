@@ -2749,8 +2749,8 @@ function HomeScreen({
               className="flex min-w-0 items-center gap-2"
             >
               <img
-                src={`${process.env.PUBLIC_URL}/digifusebox-logo.png`}
-                alt="EasyProp logo"
+                src={`${process.env.PUBLIC_URL}/InventoryProHeader.png`}
+                alt="InventoryPro logo"
                 className="h-8 w-auto"
               />
               <div className="rounded-full bg-zinc-100 px-2.5 py-1">
@@ -3679,8 +3679,8 @@ function HomesIndex({
           <div className="flex items-center justify-center">
             <div className="flex items-center gap-2 min-w-0">
               <img
-                src={`${process.env.PUBLIC_URL}/digifusebox-logo.png`}
-                alt="EasyProp logo"
+                src={`${process.env.PUBLIC_URL}/InventoryProHeader.png`}
+                alt="InventoryPro logo"
                 className="h-8 w-auto"
               />
             </div>

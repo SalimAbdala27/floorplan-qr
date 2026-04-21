@@ -6,6 +6,10 @@ const QUICK_CONDITIONS = ["good", "fair", "poor"];
 const SUMMARY_KEYS = ["cleanliness", "smells", "tidiness", "bins", "furniture", "appliances"];
 const CHECK_KEYS = ["fireSmokeAlarms", "hotWater", "ventilation", "gasSmell"];
 
+function getTodayDateInputValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 let state = {
   currentReport: null,
   activeRoomId: null,
@@ -72,6 +76,22 @@ function createDefaultDeclaration() {
   };
 }
 
+function createDefaultLegionellaAssessment() {
+  return {
+    assessorName: "",
+    assessmentDate: getTodayDateInputValue(),
+    vacancyDuration: "less_than_1_week",
+    waterSystemType: "unvented_cylinder",
+    littleUsedOutlets: "no",
+    systemCondition: "clean",
+    waterTemperatureAdequate: "yes",
+    riskResult: "",
+    riskScore: 0,
+    riskSummary: "",
+    assessedAt: "",
+  };
+}
+
 function mergeRoomInventory(defaultRoom, existingRoom) {
   if (!existingRoom) return defaultRoom;
   const existingItemsByName = new Map((existingRoom.items || []).map((item) => [item.name, item]));
@@ -132,6 +152,8 @@ export function initializeInventoryReport(propertyId, rooms, existingReport) {
   const report = {
     propertyId,
     createdAt: existingReport?.createdAt || new Date().toISOString(),
+    propertyAddress:
+      typeof existingReport?.propertyAddress === "string" ? existingReport.propertyAddress : "",
     summary: {
       ...createDefaultSummary(),
       ...(existingReport?.summary || {}),
@@ -142,6 +164,10 @@ export function initializeInventoryReport(propertyId, rooms, existingReport) {
     },
     additionalNotes: typeof existingReport?.additionalNotes === "string" ? existingReport.additionalNotes : "",
     conductedBy: typeof existingReport?.conductedBy === "string" ? existingReport.conductedBy : "",
+    legionella: {
+      ...createDefaultLegionellaAssessment(),
+      ...(existingReport?.legionella || {}),
+    },
     declaration: {
       ...createDefaultDeclaration(),
       ...(existingReport?.declaration || {}),
@@ -317,6 +343,23 @@ export function capturePanoramaForRoom(roomId, media) {
             media: [...room.media, media],
             panoramaImage: media.preview || media.url || room.panoramaImage,
             visuallyDocumented: true,
+          }
+        : room
+    ),
+  };
+  setState({ currentReport: next });
+}
+
+export function setRoomPanoramaImage(roomId, panoramaImage) {
+  if (!state.currentReport) return;
+  const next = {
+    ...state.currentReport,
+    rooms: state.currentReport.rooms.map((room) =>
+      room.roomId === roomId
+        ? {
+            ...room,
+            panoramaImage: panoramaImage || "",
+            visuallyDocumented: Boolean(panoramaImage) || room.visuallyDocumented,
           }
         : room
     ),

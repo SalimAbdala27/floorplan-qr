@@ -44,8 +44,8 @@ export default function AuthScreen() {
     <div className="min-h-screen bg-neutral-100 p-4 flex items-center justify-center">
       <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-5 shadow-md">
         <img
-          src={`${process.env.PUBLIC_URL}/digifusebox-logo.png`}
-          alt="EasyProp logo"
+          src={`${process.env.PUBLIC_URL}/InventoryProHeader.png`}
+          alt="InventoryPro logo"
           className="mx-auto mb-4 h-auto w-full max-w-[220px]"
         />
         <h1 className="text-xl font-semibold text-zinc-800">
