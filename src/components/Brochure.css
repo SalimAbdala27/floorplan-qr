@@ -17,8 +17,9 @@
   overflow: hidden;
   border-radius: 32px;
   background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--brochure-accent) 18%, white) 0, transparent 28%),
-    linear-gradient(180deg, #fffdf9 0%, #f6f8fb 52%, #eef3f8 100%);
+    radial-gradient(circle at top right, color-mix(in srgb, var(--brochure-accent) 15%, #fff7ed) 0, transparent 28%),
+    radial-gradient(circle at bottom left, rgba(255, 244, 214, 0.55) 0, transparent 26%),
+    linear-gradient(180deg, #fff8ef 0%, #fffdf8 52%, #f7f2e8 100%);
   box-shadow: var(--brochure-shadow);
 }
 
@@ -76,10 +77,14 @@
 
 .brochure-hero {
   position: relative;
-  min-height: 520px;
-  display: flex;
-  align-items: flex-end;
-  padding: 24px;
+  overflow: hidden;
+  padding: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
+}
+
+.brochure-hero-media-wrap {
+  position: relative;
+  min-height: 360px;
   overflow: hidden;
   background:
     linear-gradient(180deg, rgba(15, 23, 42, 0.08) 0%, rgba(15, 23, 42, 0.72) 78%),
@@ -121,10 +126,32 @@
 }
 
 .brochure-brandbar {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  padding: 24px;
+}
+
+.brochure-header-banner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 24px 0;
+}
+
+.brochure-header-banner img {
+  width: min(100%, 520px);
+  max-height: 88px;
+  object-fit: contain;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 10px 14px;
+  box-shadow: 0 18px 32px rgba(8, 17, 31, 0.2);
 }
 
 .brochure-brandmark {
@@ -176,8 +203,11 @@
   letter-spacing: -0.04em;
 }
 
-.brochure-hero-body {
-  max-width: 740px;
+.brochure-hero-copy {
+  padding: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 251, 245, 0.98) 0%, rgba(252, 247, 239, 0.98) 100%),
+    radial-gradient(circle at top right, rgba(255, 226, 169, 0.18) 0, transparent 36%);
 }
 
 .brochure-hero-title {
@@ -187,6 +217,7 @@
   font-weight: 800;
   letter-spacing: -0.05em;
   text-wrap: balance;
+  color: var(--brochure-text);
 }
 
 .brochure-hero-location {
@@ -194,7 +225,7 @@
   max-width: 620px;
   font-size: clamp(1rem, 2vw, 1.15rem);
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.84);
+  color: var(--brochure-muted);
 }
 
 .brochure-hero-badges {
@@ -207,11 +238,11 @@
 .brochure-hero-badge {
   padding: 10px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.13);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(12px);
+  background: white;
+  border: 1px solid rgba(15, 23, 42, 0.08);
   font-size: 0.83rem;
   font-weight: 600;
+  color: var(--brochure-text);
 }
 
 .brochure-overview-grid {
@@ -413,7 +444,27 @@
 .brochure-room-list {
   margin-top: 22px;
   display: grid;
+  gap: 18px;
+}
+
+.brochure-room-list-title {
+  margin-top: 18px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--brochure-accent-strong);
+}
+
+.brochure-room-group {
+  display: grid;
   gap: 12px;
+}
+
+.brochure-room-group-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brochure-muted);
 }
 
 .brochure-room-item {
@@ -557,6 +608,54 @@
   margin-top: 14px;
 }
 
+.brochure-pano-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.brochure-pano-card {
+  width: min(920px, 100%);
+  border-radius: 24px;
+  background: white;
+  padding: 18px;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.34);
+}
+
+.brochure-pano-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.brochure-pano-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.brochure-pano-subtitle {
+  margin-top: 4px;
+  font-size: 0.9rem;
+  color: var(--brochure-muted);
+}
+
+.brochure-pano-close {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: white;
+  color: var(--brochure-text);
+  font-weight: 700;
+}
+
 @media (min-width: 768px) {
   .brochure-stack {
     gap: 36px;
@@ -604,17 +703,30 @@
   }
 
   .brochure-hero {
-    min-height: 440px;
-    padding: 18px;
+    min-height: 0;
   }
 
   .brochure-brandbar {
     flex-direction: column;
     align-items: flex-start;
+    padding: 18px;
+  }
+
+  .brochure-header-banner {
+    padding: 18px 18px 0;
   }
 
   .brochure-price-pill {
     width: 100%;
+  }
+
+  .brochure-hero-copy {
+    padding: 18px;
+  }
+
+  .brochure-pano-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .brochure-stat-row {

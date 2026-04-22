@@ -132,9 +132,9 @@ export default function InventoryRoom({
           <p className="text-xs font-semibold text-zinc-700">Quick Condition</p>
           <div className="mt-2 grid grid-cols-3 gap-1">
             {[
-              { key: "good", label: "Good" },
-              { key: "fair", label: "Fair" },
-              { key: "poor", label: "Poor" },
+              { key: "good", label: "Good", activeClass: "bg-emerald-600 text-white", idleClass: "bg-emerald-50 text-emerald-700" },
+              { key: "fair", label: "Fair", activeClass: "bg-amber-500 text-white", idleClass: "bg-amber-50 text-amber-700" },
+              { key: "poor", label: "Poor", activeClass: "bg-red-600 text-white", idleClass: "bg-red-50 text-red-700" },
             ].map((option) => (
               <button
                 key={`quick-${roomInventory.roomId}-${option.key}`}
@@ -142,8 +142,8 @@ export default function InventoryRoom({
                 onClick={() => onApplyQuickCondition(option.key)}
                 className={`h-9 rounded-lg text-xs font-semibold ${
                   roomInventory.overallCondition === option.key
-                    ? "bg-zinc-800 text-white"
-                    : "bg-zinc-200 text-zinc-700"
+                    ? option.activeClass
+                    : option.idleClass
                 }`}
               >
                 {option.label}

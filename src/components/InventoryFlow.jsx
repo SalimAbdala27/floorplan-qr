@@ -33,9 +33,9 @@ const SUMMARY_FIELDS = [
 ];
 
 const SUMMARY_OPTIONS = [
-  { key: "urgent_attention", label: "Urgent Attention" },
-  { key: "needs_improvement", label: "Needs Improvement" },
-  { key: "good", label: "Good" },
+  { key: "urgent_attention", label: "Urgent Attention", activeClass: "bg-red-600 text-white", idleClass: "bg-red-50 text-red-700" },
+  { key: "needs_improvement", label: "Needs Improvement", activeClass: "bg-amber-500 text-white", idleClass: "bg-amber-50 text-amber-700" },
+  { key: "good", label: "Good", activeClass: "bg-emerald-600 text-white", idleClass: "bg-emerald-50 text-emerald-700" },
 ];
 
 const CHECK_FIELDS = [
@@ -109,7 +109,7 @@ export default function InventoryFlow({
   const inventoryBranding = branding || defaultBranding || {
     companyName: "",
     primaryColor: "#1f2937",
-    accentColor: "#e2e8f0",
+    accentColor: "#15803d",
     logoDataUrl: null,
     headerLogoDataUrl: null,
     brandImageVariant: "logo",
@@ -345,7 +345,7 @@ export default function InventoryFlow({
                           type="button"
                           onClick={() => updateInventorySummary(field.key, option.key)}
                           className={`rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                            active ? "bg-zinc-800 text-white" : "bg-zinc-100 text-zinc-600"
+                            active ? option.activeClass : option.idleClass
                           }`}
                         >
                           {option.label}

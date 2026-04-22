@@ -16,6 +16,11 @@ function deriveStats(rooms, floors) {
   };
 }
 
+function getEditableStat(value, fallback) {
+  if (value === "" || value === null || typeof value === "undefined") return String(fallback);
+  return String(value);
+}
+
 function splitFeatures(value) {
   return String(value || "")
     .split("\n")
@@ -45,7 +50,13 @@ export default function MarketingBrochureFlow({
   onToggleInventoryMedia,
   onExportBrochure,
 }) {
-  const stats = deriveStats(home.rooms || [], floors || []);
+  const derivedStats = deriveStats(home.rooms || [], floors || []);
+  const stats = {
+    bedrooms: getEditableStat(brochure.bedrooms, derivedStats.bedrooms),
+    bathrooms: getEditableStat(brochure.bathrooms, derivedStats.bathrooms),
+    receptions: getEditableStat(brochure.receptions, derivedStats.receptions),
+    floors: getEditableStat(brochure.floors, derivedStats.floors),
+  };
   const features = splitFeatures(brochure.keyFeaturesText);
   const roomSummary = (home.rooms || []).map((room) => ({
     id: room.id,
@@ -65,6 +76,7 @@ export default function MarketingBrochureFlow({
     ...image,
     caption: image.caption || image.roomName || "Property image",
   }));
+  const headerLogoImage = branding?.headerLogoDataUrl || "";
 
   return (
     <div className="flex-1 p-4">
@@ -157,6 +169,72 @@ export default function MarketingBrochureFlow({
               </label>
             </div>
 
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-[11px] font-medium text-zinc-600">
+                Bedrooms
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  enterKeyHint="done"
+                  step="0.5"
+                  min="0"
+                  value={stats.bedrooms}
+                  onChange={(event) => onBrochureChange({ bedrooms: event.target.value })}
+                  className="mt-1 h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm"
+                />
+              </label>
+              <label className="text-[11px] font-medium text-zinc-600">
+                Bathrooms
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  enterKeyHint="done"
+                  step="0.5"
+                  min="0"
+                  value={stats.bathrooms}
+                  onChange={(event) => onBrochureChange({ bathrooms: event.target.value })}
+                  className="mt-1 h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm"
+                />
+              </label>
+              <label className="text-[11px] font-medium text-zinc-600">
+                Reception rooms
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  enterKeyHint="done"
+                  step="0.5"
+                  min="0"
+                  value={stats.receptions}
+                  onChange={(event) => onBrochureChange({ receptions: event.target.value })}
+                  className="mt-1 h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm"
+                />
+              </label>
+              <label className="text-[11px] font-medium text-zinc-600">
+                Floors
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  enterKeyHint="done"
+                  step="0.5"
+                  min="0"
+                  value={stats.floors}
+                  onChange={(event) => onBrochureChange({ floors: event.target.value })}
+                  className="mt-1 h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm"
+                />
+              </label>
+            </div>
+
+            <label className="text-[11px] font-medium text-zinc-600">
+              Room list heading
+              <input
+                type="text"
+                value={brochure.roomListTitle || ""}
+                onChange={(event) => onBrochureChange({ roomListTitle: event.target.value })}
+                placeholder="Rooms within the house"
+                className="mt-1 h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm"
+              />
+            </label>
+
             <label className="text-[11px] font-medium text-zinc-600">
               Headline
               <input
@@ -214,13 +292,33 @@ export default function MarketingBrochureFlow({
                 ) : null}
               </div>
               {logoImage ? (
-                <img
-                  src={logoImage}
-                  alt="Estate agent logo"
-                  className="mt-2 h-14 w-auto rounded-lg border border-zinc-200 bg-white p-1"
-                />
+                <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                  <p className="text-[11px] font-semibold text-emerald-700">Logo uploaded</p>
+                  <img
+                    src={logoImage}
+                    alt="Estate agent logo"
+                    className="mt-2 h-14 w-auto rounded-lg border border-zinc-200 bg-white p-1"
+                  />
+                </div>
               ) : null}
             </div>
+
+            {headerLogoImage ? (
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-2">
+                <p className="text-[11px] font-semibold text-zinc-700">Header logo banner</p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  The brochure PDF will also use the saved header banner from branding.
+                </p>
+                <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                  <p className="text-[11px] font-semibold text-emerald-700">Header logo ready</p>
+                  <img
+                    src={headerLogoImage}
+                    alt="Brochure header logo"
+                    className="mt-2 h-14 w-full rounded-lg border border-zinc-200 bg-white p-1 object-contain"
+                  />
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-2">
               <p className="text-[11px] font-semibold text-zinc-700">Hero image</p>
@@ -247,6 +345,16 @@ export default function MarketingBrochureFlow({
                   </button>
                 ) : null}
               </div>
+              {heroImage ? (
+                <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                  <p className="text-[11px] font-semibold text-emerald-700">Hero image uploaded</p>
+                  <img
+                    src={heroImage}
+                    alt="Brochure hero"
+                    className="mt-2 h-28 w-full rounded-lg border border-zinc-200 object-cover"
+                  />
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-2">
@@ -400,6 +508,13 @@ export default function MarketingBrochureFlow({
                   placeholder="Email"
                   className="h-10 rounded-lg border border-zinc-300 px-3 text-sm"
                 />
+                <input
+                  type="url"
+                  value={brochure.viewingLink || ""}
+                  onChange={(event) => onBrochureChange({ viewingLink: event.target.value })}
+                  placeholder="Viewing link / booking URL"
+                  className="h-10 rounded-lg border border-zinc-300 px-3 text-sm sm:col-span-2"
+                />
               </div>
             </div>
 
@@ -418,6 +533,7 @@ export default function MarketingBrochureFlow({
             accentColor={brochure.accentColor || "#0f766e"}
             logo={logoImage}
             heroImage={heroImage}
+            headerLogo={headerLogoImage}
             title={brochureTitle}
             location={brochureLocation}
             price={brochure.askingPrice}
@@ -429,10 +545,12 @@ export default function MarketingBrochureFlow({
             galleryImages={brochureGallery}
             floorplanImage={floorplanPreviewImage}
             rooms={roomSummary}
+            roomListTitle={brochure.roomListTitle || "Rooms within the house"}
             branchName={brochure.branchName || branding.companyName}
             agentName={brochure.agentName}
             agentPhone={brochure.agentPhone}
             agentEmail={brochure.agentEmail}
+            viewingLink={brochure.viewingLink}
           />
         </div>
       </div>

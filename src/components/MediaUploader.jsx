@@ -82,7 +82,8 @@ export default function MediaUploader({
   const [error, setError] = useState("");
   const [qualityValue, setQualityValue] = useState(72);
   const [lastUploadSummary, setLastUploadSummary] = useState("");
-  const [defaultAssignment, setDefaultAssignment] = useState("");
+  const [pendingUpload, setPendingUpload] = useState(null);
+  const [selectedAssignment, setSelectedAssignment] = useState("");
   const panoGalleryInputRef = useRef(null);
   const panoFileInputRef = useRef(null);
   const photoCameraInputRef = useRef(null);
@@ -92,7 +93,7 @@ export default function MediaUploader({
   const panoEstimate = useMemo(() => formatBytes(estimateCompressedBytes(qualitySettings, "pano")), [qualitySettings]);
   const photoEstimate = useMemo(() => formatBytes(estimateCompressedBytes(qualitySettings, "detail")), [qualitySettings]);
 
-  const handleFiles = async (files, mode = "pano") => {
+  const submitFiles = async (files, mode = "pano", assignment = "") => {
     const selectedFiles = Array.from(files || []).filter(Boolean);
     if (!selectedFiles.length) return;
 
@@ -128,7 +129,7 @@ export default function MediaUploader({
           originalUrl: sourceDataUrl,
           fileName: file.name || `${mode === "pano" ? "panorama" : "photo"}_${Date.now()}.jpg`,
           mimeType: file.type || "image/jpeg",
-          assignment: defaultAssignment || "",
+          assignment: assignment || "",
           capturedAt: sourceCapturedAt || new Date().toISOString(),
           uploadedAt: new Date().toISOString(),
           originalSizeBytes: file.size || 0,
@@ -162,27 +163,30 @@ export default function MediaUploader({
       );
     }
     setUploading(false);
+    setPendingUpload(null);
+    setSelectedAssignment("");
+  };
+
+  const queueFiles = (files, mode = "pano") => {
+    const selectedFiles = Array.from(files || []).filter(Boolean);
+    if (!selectedFiles.length) return;
+    setError("");
+    setPendingUpload({
+      files: selectedFiles,
+      mode,
+    });
   };
 
   return (
     <div className="space-y-3">
       <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-2">
         <div className="space-y-2">
-          <label className="block text-[11px] font-semibold text-zinc-700">
-            Pre-assign new images
-            <select
-              value={defaultAssignment}
-              onChange={(event) => setDefaultAssignment(event.target.value)}
-              className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-[11px]"
-            >
-              <option value="">Leave unassigned</option>
-              {assignmentOptions.map((option) => (
-                <option key={`incoming-${option}`} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div>
+            <p className="text-[11px] font-semibold text-zinc-700">Pre-assign new images</p>
+            <p className="mt-1 text-[11px] text-zinc-500">
+              Select the images first, then choose whether that batch should be added as unassigned or sent straight to a room item.
+            </p>
+          </div>
           <label className="block text-[11px] font-semibold text-zinc-700">
             Upload quality: {qualityValue}%
             <input
@@ -200,6 +204,67 @@ export default function MediaUploader({
           </p>
         </div>
       </div>
+
+      {pendingUpload ? (
+        <div className="rounded-lg border border-zinc-200 bg-white p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Ready to add</p>
+              <p className="mt-1 text-sm font-semibold text-zinc-800">
+                {pendingUpload.files.length} {pendingUpload.mode === "pano" ? "panorama" : "photo"}
+                {pendingUpload.files.length === 1 ? "" : "s"} selected
+              </p>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                {pendingUpload.files.slice(0, 3).map((file) => file.name || "Image").join(", ")}
+                {pendingUpload.files.length > 3 ? ` +${pendingUpload.files.length - 3} more` : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setPendingUpload(null);
+                setSelectedAssignment("");
+              }}
+              className="h-9 rounded-lg bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-700"
+            >
+              Cancel Batch
+            </button>
+          </div>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <label className="text-[11px] font-semibold text-zinc-700">
+              Assign this batch to
+              <select
+                value={selectedAssignment}
+                onChange={(event) => setSelectedAssignment(event.target.value)}
+                className="mt-1 h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-[11px]"
+              >
+                <option value="">Leave unassigned</option>
+                {assignmentOptions.map((option) => (
+                  <option key={`pending-${option}`} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => submitFiles(pendingUpload.files, pendingUpload.mode, "")}
+              className="h-10 rounded-lg bg-zinc-200 px-4 text-[11px] font-semibold text-zinc-800"
+            >
+              Add As Unassigned
+            </button>
+            <button
+              type="button"
+              onClick={() => submitFiles(pendingUpload.files, pendingUpload.mode, selectedAssignment)}
+              disabled={!selectedAssignment}
+              className="h-10 rounded-lg bg-zinc-800 px-4 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Add To Assignment
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-lg border border-zinc-200 p-2">
         <p className="text-[11px] font-semibold text-zinc-700">Add Panorama</p>
@@ -226,7 +291,7 @@ export default function MediaUploader({
           accept={IMAGE_ACCEPT}
           className="hidden"
           onChange={(event) => {
-            handleFiles(event.target.files, "pano");
+            queueFiles(event.target.files, "pano");
             event.target.value = "";
           }}
         />
@@ -237,7 +302,7 @@ export default function MediaUploader({
           accept={IMAGE_ACCEPT}
           className="hidden"
           onChange={(event) => {
-            handleFiles(event.target.files, "pano");
+            queueFiles(event.target.files, "pano");
             event.target.value = "";
           }}
         />
@@ -276,7 +341,7 @@ export default function MediaUploader({
           capture="environment"
           className="hidden"
           onChange={(event) => {
-            handleFiles(event.target.files, "detail");
+            queueFiles(event.target.files, "detail");
             event.target.value = "";
           }}
         />
@@ -287,7 +352,7 @@ export default function MediaUploader({
           accept={IMAGE_ACCEPT}
           className="hidden"
           onChange={(event) => {
-            handleFiles(event.target.files, "detail");
+            queueFiles(event.target.files, "detail");
             event.target.value = "";
           }}
         />
@@ -298,7 +363,7 @@ export default function MediaUploader({
           accept={IMAGE_ACCEPT}
           className="hidden"
           onChange={(event) => {
-            handleFiles(event.target.files, "detail");
+            queueFiles(event.target.files, "detail");
             event.target.value = "";
           }}
         />

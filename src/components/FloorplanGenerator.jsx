@@ -33,6 +33,13 @@ function snapCardinalAngle(angle, threshold = 7) {
   return minDelta <= threshold ? closest : normalized;
 }
 
+function blurOnDoneKey(event) {
+  event.stopPropagation();
+  if (event.key === "Enter" || event.key === "Done" || event.key === "Go") {
+    event.currentTarget.blur();
+  }
+}
+
 function normalizeItemForCanvas(type, item) {
   const angled = withAngle(item || {});
   const minSize = getMinSize(type);
@@ -1769,6 +1776,8 @@ export default function FloorplanGenerator({
                             Width (m)
                             <input
                               type="number"
+                              inputMode="decimal"
+                              enterKeyHint="done"
                               step="0.1"
                               min={Number((getMinSize("rooms").w / PIXELS_PER_METER).toFixed(1))}
                               max="20"
@@ -1780,12 +1789,8 @@ export default function FloorplanGenerator({
                                 }))
                               }
                               onBlur={() => commitSelectedRoomMeasurementDraft("width")}
-                              onKeyDown={(event) => {
-                                event.stopPropagation();
-                                if (event.key === "Enter") {
-                                  event.currentTarget.blur();
-                                }
-                              }}
+                              onKeyDown={blurOnDoneKey}
+                              onKeyUp={blurOnDoneKey}
                               className="mt-1 h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
                             />
                           </label>
@@ -1793,6 +1798,8 @@ export default function FloorplanGenerator({
                             Height (m)
                             <input
                               type="number"
+                              inputMode="decimal"
+                              enterKeyHint="done"
                               step="0.1"
                               min={Number((getMinSize("rooms").h / PIXELS_PER_METER).toFixed(1))}
                               max="20"
@@ -1804,12 +1811,8 @@ export default function FloorplanGenerator({
                                 }))
                               }
                               onBlur={() => commitSelectedRoomMeasurementDraft("height")}
-                              onKeyDown={(event) => {
-                                event.stopPropagation();
-                                if (event.key === "Enter") {
-                                  event.currentTarget.blur();
-                                }
-                              }}
+                              onKeyDown={blurOnDoneKey}
+                              onKeyUp={blurOnDoneKey}
                               className="mt-1 h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
                             />
                           </label>
@@ -1817,6 +1820,8 @@ export default function FloorplanGenerator({
                             Rotation
                             <input
                               type="number"
+                              inputMode="numeric"
+                              enterKeyHint="done"
                               step="1"
                               min="-180"
                               max="180"
@@ -1828,12 +1833,8 @@ export default function FloorplanGenerator({
                                 }))
                               }
                               onBlur={() => commitSelectedPropertyDraft("angle")}
-                              onKeyDown={(event) => {
-                                event.stopPropagation();
-                                if (event.key === "Enter") {
-                                  event.currentTarget.blur();
-                                }
-                              }}
+                              onKeyDown={blurOnDoneKey}
+                              onKeyUp={blurOnDoneKey}
                               className="mt-1 h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
                             />
                           </label>
@@ -1845,6 +1846,8 @@ export default function FloorplanGenerator({
                           <input
                             key={`prop-${key}`}
                             type="number"
+                            inputMode="decimal"
+                            enterKeyHint="done"
                             value={selectedPropertyDraft[key]}
                             onChange={(event) =>
                               setSelectedPropertyDraft((prev) => ({
@@ -1853,12 +1856,8 @@ export default function FloorplanGenerator({
                               }))
                             }
                             onBlur={() => commitSelectedPropertyDraft(key)}
-                            onKeyDown={(event) => {
-                              event.stopPropagation();
-                              if (event.key === "Enter") {
-                                event.currentTarget.blur();
-                              }
-                            }}
+                            onKeyDown={blurOnDoneKey}
+                            onKeyUp={blurOnDoneKey}
                             className="h-9 rounded-xl border border-zinc-300 px-2 text-sm"
                           />
                         ))}

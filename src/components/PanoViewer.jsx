@@ -55,6 +55,7 @@ export default function PanoViewer({ src, alt, heightClass = "h-80" }) {
   const viewerRef = useRef(null);
   const mountedRef = useRef(false);
   const [viewerReady, setViewerReady] = useState(false);
+  const [viewerError, setViewerError] = useState(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -65,6 +66,7 @@ export default function PanoViewer({ src, alt, heightClass = "h-80" }) {
     const initViewer = async () => {
       try {
         if (mountedRef.current) setViewerReady(false);
+        if (mountedRef.current) setViewerError(false);
         await ensurePannellumAssets();
         if (cancelled || !containerRef.current || !window.pannellum || !src) return;
         if (viewerRef.current?.destroy) {
@@ -83,7 +85,10 @@ export default function PanoViewer({ src, alt, heightClass = "h-80" }) {
         });
         if (mountedRef.current && !cancelled) setViewerReady(true);
       } catch {
-        if (mountedRef.current && !cancelled) setViewerReady(false);
+        if (mountedRef.current && !cancelled) {
+          setViewerReady(false);
+          setViewerError(true);
+        }
       }
     };
 
@@ -109,6 +114,11 @@ export default function PanoViewer({ src, alt, heightClass = "h-80" }) {
           loading="lazy"
           className="absolute inset-0 h-full w-full object-cover"
         />
+      ) : null}
+      {!viewerReady ? (
+        <div className="absolute inset-x-3 bottom-3 rounded-lg bg-black/55 px-3 py-2 text-[11px] font-medium text-white backdrop-blur">
+          {viewerError ? "Interactive 360 viewer unavailable on this device right now. The panorama image is still shown above." : "Loading 360 viewer..."}
+        </div>
       ) : null}
     </div>
   );

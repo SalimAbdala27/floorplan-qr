@@ -1,8 +1,23 @@
+import { useMemo } from "react";
 import "./Brochure.css";
 
 function formatCount(value, singular, plural = `${singular}s`) {
   if (!value && value !== 0) return "";
-  return `${value} ${value === 1 ? singular : plural}`;
+  const numericValue = Number(value);
+  return `${value} ${numericValue === 1 ? singular : plural}`;
+}
+
+function normalizeAccentColor(value) {
+  const hex = String(value || "").trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return "#0f766e";
+  const channels = [
+    Number.parseInt(hex.slice(1, 3), 16),
+    Number.parseInt(hex.slice(3, 5), 16),
+    Number.parseInt(hex.slice(5, 7), 16),
+  ];
+  const luminance = (0.2126 * channels[0]) + (0.7152 * channels[1]) + (0.0722 * channels[2]);
+  if (luminance <= 170) return hex;
+  return "#15803d";
 }
 
 function PropertyStatIcon({ type }) {
@@ -83,12 +98,17 @@ function MiniIcon({ kind }) {
   );
 }
 
-function HeroSection({ title, location, price, heroImage, logo, propertyType, badges }) {
+function HeroSection({ title, location, price, heroImage, logo, headerLogo, propertyType, badges }) {
   return (
     <section className="brochure-card brochure-hero">
-      {heroImage ? <img src={heroImage} alt={title} className="brochure-hero-media" /> : <div className="brochure-hero-fallback" />}
-      <div className="brochure-hero-overlay" />
-      <div className="brochure-hero-content">
+      <div className="brochure-hero-media-wrap">
+        {heroImage ? <img src={heroImage} alt={title} className="brochure-hero-media" /> : <div className="brochure-hero-fallback" />}
+        <div className="brochure-hero-overlay" />
+        {headerLogo ? (
+          <div className="brochure-header-banner">
+            <img src={headerLogo} alt="Agency header banner" />
+          </div>
+        ) : null}
         <div className="brochure-brandbar">
           <div className="brochure-brandmark">
             {logo ? <img src={logo} alt="Agency logo" /> : null}
@@ -99,18 +119,18 @@ function HeroSection({ title, location, price, heroImage, logo, propertyType, ba
             <div className="brochure-price-value">{price || "Price on application"}</div>
           </div>
         </div>
+      </div>
 
-        <div className="brochure-hero-body">
-          <div className="brochure-kicker">Magazine Style Brochure</div>
-          <h1 className="brochure-hero-title">{title || "Marketing-ready property brochure"}</h1>
-          <p className="brochure-hero-location">{location || "Add the property location to complete the brochure header."}</p>
-          <div className="brochure-hero-badges">
-            {badges.filter(Boolean).map((badge) => (
-              <span key={badge} className="brochure-hero-badge">
-                {badge}
-              </span>
-            ))}
-          </div>
+      <div className="brochure-hero-copy">
+        <div className="brochure-kicker">Magazine Style Brochure</div>
+        <h1 className="brochure-hero-title">{title || "Marketing-ready property brochure"}</h1>
+        <p className="brochure-hero-location">{location || "Add the property location to complete the brochure header."}</p>
+        <div className="brochure-hero-badges">
+          {badges.filter(Boolean).map((badge) => (
+            <span key={badge} className="brochure-hero-badge">
+              {badge}
+            </span>
+          ))}
         </div>
       </div>
     </section>
@@ -200,7 +220,7 @@ function GallerySection({ images }) {
                   <div className="brochure-gallery-room">{image.roomName || image.caption || "Property Image"}</div>
                   <div className="brochure-gallery-type">{image.type === "pano" ? "Panorama" : "Photography"}</div>
                 </div>
-                {image.type === "pano" ? <button type="button" className="brochure-360-chip">View 360</button> : null}
+                {image.type === "pano" ? <span className="brochure-360-chip">Panorama Image</span> : null}
               </div>
             </article>
           ))}
@@ -232,21 +252,37 @@ function FloorplanSection({ floorplanImage }) {
   );
 }
 
-function RoomDetailsSection({ rooms }) {
+function RoomDetailsSection({ rooms, title }) {
+  const roomsByFloor = useMemo(() => {
+    const groups = new Map();
+    rooms.forEach((room) => {
+      const floorName = room.floor || "Unassigned floor";
+      if (!groups.has(floorName)) groups.set(floorName, []);
+      groups.get(floorName).push(room);
+    });
+    return Array.from(groups.entries());
+  }, [rooms]);
+
   return (
     <section className="brochure-card brochure-section">
       <div className="brochure-kicker">Room Details</div>
       <h2 className="brochure-section-title">Simple, readable room dimensions.</h2>
       <div className="brochure-divider" />
+      <p className="brochure-room-list-title">{title || "Rooms within the house"}</p>
       <div className="brochure-room-list">
-        {rooms.length ? (
-          rooms.map((room) => (
-            <div key={room.id} className="brochure-room-item">
-              <div>
-                <div className="brochure-room-name">{room.name}</div>
-                <div className="brochure-room-floor">{room.floor}</div>
-              </div>
-              <div className="brochure-room-size">{room.size}</div>
+        {roomsByFloor.length ? (
+          roomsByFloor.map(([floorName, floorRooms]) => (
+            <div key={floorName} className="brochure-room-group">
+              <div className="brochure-room-group-title">{floorName}</div>
+              {floorRooms.map((room) => (
+                <div key={room.id} className="brochure-room-item">
+                  <div>
+                    <div className="brochure-room-name">{room.name}</div>
+                    <div className="brochure-room-floor">{room.floor}</div>
+                  </div>
+                  <div className="brochure-room-size">{room.size}</div>
+                </div>
+              ))}
             </div>
           ))
         ) : (
@@ -257,7 +293,7 @@ function RoomDetailsSection({ rooms }) {
   );
 }
 
-function ContactSection({ logo, branchName, agentName, phone, email, location, accentColor }) {
+function ContactSection({ logo, branchName, agentName, phone, email, location, accentColor, viewingLink }) {
   const contacts = [
     { label: agentName || "Add agent name", icon: "location" },
     { label: phone || "Add phone number", icon: "phone" },
@@ -274,9 +310,15 @@ function ContactSection({ logo, branchName, agentName, phone, email, location, a
             Speak with {branchName || "the sales team"} to arrange a viewing and talk through availability, timings,
             and the property’s standout features.
           </p>
-          <button type="button" className="brochure-button">
-            Book a Viewing
-          </button>
+          {viewingLink ? (
+            <a href={viewingLink} target="_blank" rel="noreferrer" className="brochure-button">
+              Book a Viewing
+            </a>
+          ) : (
+            <button type="button" className="brochure-button">
+              Book a Viewing
+            </button>
+          )}
         </div>
 
         <div className="brochure-contact-panel">
@@ -310,6 +352,7 @@ function ContactSection({ logo, branchName, agentName, phone, email, location, a
 export default function Brochure({
   accentColor = "#0f766e",
   logo = "",
+  headerLogo = "",
   heroImage = "",
   title = "",
   location = "",
@@ -322,11 +365,14 @@ export default function Brochure({
   galleryImages = [],
   floorplanImage = "",
   rooms = [],
+  roomListTitle = "",
   branchName = "",
   agentName = "",
   agentPhone = "",
   agentEmail = "",
+  viewingLink = "",
 }) {
+  const safeAccentColor = normalizeAccentColor(accentColor);
   const badges = [
     formatCount(stats.bedrooms, "Bed"),
     formatCount(stats.bathrooms, "Bath"),
@@ -335,7 +381,7 @@ export default function Brochure({
   ];
 
   return (
-    <div className="brochure-shell" style={{ "--brochure-accent": accentColor || "#0f766e" }}>
+    <div className="brochure-shell" style={{ "--brochure-accent": safeAccentColor }}>
       <div className="brochure-root">
         <div className="brochure-stack">
           <HeroSection
@@ -344,13 +390,14 @@ export default function Brochure({
             price={price}
             heroImage={heroImage}
             logo={logo}
+            headerLogo={headerLogo}
             propertyType={propertyType}
             badges={badges}
           />
           <OverviewSection summary={summary} stats={stats} meta={meta} features={features} />
           <GallerySection images={galleryImages} />
           <FloorplanSection floorplanImage={floorplanImage} />
-          <RoomDetailsSection rooms={rooms} />
+          <RoomDetailsSection rooms={rooms} title={roomListTitle} />
           <ContactSection
             logo={logo}
             branchName={branchName}
@@ -358,7 +405,8 @@ export default function Brochure({
             phone={agentPhone}
             email={agentEmail}
             location={location}
-            accentColor={accentColor}
+            accentColor={safeAccentColor}
+            viewingLink={viewingLink}
           />
         </div>
       </div>
