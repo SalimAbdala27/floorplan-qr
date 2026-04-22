@@ -54,17 +54,30 @@ function createPdfThemeTokens(primaryRgb, accentRgb, preset = "light") {
 
   return {
     coverRgb: primaryRgb,
-    cardRgb: [255, 255, 255],
-    cardMutedRgb: accentSoftRgb,
-    borderRgb: [228, 228, 231],
+    cardRgb: [255, 252, 247],
+    cardMutedRgb: [250, 244, 235],
+    borderRgb: [232, 223, 210],
     titleTextRgb: primaryRgb,
-    bodyTextRgb: [82, 82, 91],
-    mutedTextRgb: [113, 113, 122],
-    footerTextRgb: [113, 113, 122],
+    bodyTextRgb: [70, 82, 98],
+    mutedTextRgb: [94, 104, 118],
+    footerTextRgb: [125, 112, 100],
     inverseTextRgb: [255, 255, 255],
     sectionBarRgb: accentDarkRgb,
     accentSoftRgb,
   };
+}
+
+function drawEditorialBackdrop(doc, theme, accentRgb) {
+  doc.setFillColor(theme.coverRgb[0], theme.coverRgb[1], theme.coverRgb[2]);
+  doc.rect(0, 0, 210, 297, "F");
+  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+  doc.circle(178, 34, 34, "F");
+  doc.setFillColor(theme.cardMutedRgb[0], theme.cardMutedRgb[1], theme.cardMutedRgb[2]);
+  doc.circle(30, 248, 26, "F");
+  doc.setFillColor(theme.cardRgb[0], theme.cardRgb[1], theme.cardRgb[2]);
+  doc.setGState(new doc.GState({ opacity: 0.12 }));
+  doc.roundedRect(14, 18, 182, 250, 18, 18, "F");
+  doc.setGState(new doc.GState({ opacity: 1 }));
 }
 
 function safeText(value, fallback = "Not stated") {
@@ -97,8 +110,7 @@ export function generateLegionellaPdf({
   const accentSoft = theme.cardMutedRgb;
   const result = assessment?.riskResult ? assessment : { ...assessment, ...assessLegionellaRisk(assessment) };
 
-  doc.setFillColor(theme.coverRgb[0], theme.coverRgb[1], theme.coverRgb[2]);
-  doc.rect(0, 0, 210, 297, "F");
+  drawEditorialBackdrop(doc, theme, accentRgb);
   doc.setFillColor(theme.cardRgb[0], theme.cardRgb[1], theme.cardRgb[2]);
   doc.roundedRect(14, 18, 182, 250, 10, 10, "F");
   doc.setFillColor(theme.sectionBarRgb[0], theme.sectionBarRgb[1], theme.sectionBarRgb[2]);

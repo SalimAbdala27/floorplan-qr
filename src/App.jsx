@@ -259,6 +259,7 @@ function createPdfThemeTokens(primaryRgb, accentRgb, preset = "light") {
       borderRgb: [51, 65, 85],
       titleTextRgb: [241, 245, 249],
       bodyTextRgb: [203, 213, 225],
+      coverBodyTextRgb: [203, 213, 225],
       mutedTextRgb: [148, 163, 184],
       inverseTextRgb: [255, 255, 255],
       footerTextRgb: [148, 163, 184],
@@ -282,32 +283,49 @@ function createPdfThemeTokens(primaryRgb, accentRgb, preset = "light") {
     preset,
     accentDarkRgb,
     accentSoftRgb,
-    canvasRgb: [248, 250, 252],
+    canvasRgb: [255, 248, 239],
     sectionBarRgb: accentDarkRgb,
     coverRgb: primaryRgb,
-    cardRgb: [255, 255, 255],
-    cardAltRgb: [248, 250, 252],
-    cardMutedRgb: accentSoftRgb,
-    borderRgb: [228, 228, 231],
+    cardRgb: [255, 252, 247],
+    cardAltRgb: [247, 242, 232],
+    cardMutedRgb: [250, 244, 235],
+    borderRgb: [232, 223, 210],
     titleTextRgb: primaryRgb,
-    bodyTextRgb: [82, 82, 91],
-    mutedTextRgb: [113, 113, 122],
+    bodyTextRgb: [70, 82, 98],
+    coverBodyTextRgb: [236, 240, 244],
+    mutedTextRgb: [94, 104, 118],
     inverseTextRgb: [255, 255, 255],
-    footerTextRgb: [120, 120, 120],
-    footerLineRgb: accentSoftRgb,
+    footerTextRgb: [125, 112, 100],
+    footerLineRgb: [234, 223, 208],
     coverOverlayRgb: [10, 18, 32],
     coverOverlayOpacity: 0.56,
     coverPanelRgb: [255, 255, 255],
-    coverPanelOpacity: 0.72,
-    statCardRgb: accentSoftRgb,
-    metaCardRgb: [248, 250, 252],
+    coverPanelOpacity: 0.78,
+    statCardRgb: [255, 252, 247],
+    metaCardRgb: [247, 242, 232],
     tableHeadTextRgb: [255, 255, 255],
-    tableBodyFillRgb: [255, 255, 255],
-    tableAltFillRgb: [248, 250, 252],
-    floorplanGridRgb: [236, 239, 243],
-    floorplanStrokeRgb: [210, 210, 210],
-    floorplanPanelRgb: [255, 255, 255],
+    tableBodyFillRgb: [255, 252, 247],
+    tableAltFillRgb: [249, 244, 237],
+    floorplanGridRgb: [235, 228, 218],
+    floorplanStrokeRgb: [215, 204, 192],
+    floorplanPanelRgb: [255, 252, 247],
   };
+}
+
+function drawEditorialBackdrop(doc, theme, accentRgb, options = {}) {
+  const topRight = options.topRight ?? { x: 184, y: 28, r: 30 };
+  const bottomLeft = options.bottomLeft ?? { x: 28, y: 252, r: 22 };
+  const glow = options.glow ?? { x: 40, y: 44, r: 36 };
+  doc.setFillColor(...theme.canvasRgb);
+  doc.rect(0, 0, 210, 297, "F");
+  doc.setFillColor(...accentRgb);
+  doc.setGState(new doc.GState({ opacity: 0.16 }));
+  doc.circle(topRight.x, topRight.y, topRight.r, "F");
+  doc.setFillColor(...theme.cardMutedRgb);
+  doc.circle(bottomLeft.x, bottomLeft.y, bottomLeft.r, "F");
+  doc.setFillColor(...theme.cardAltRgb);
+  doc.circle(glow.x, glow.y, glow.r, "F");
+  doc.setGState(new doc.GState({ opacity: 1 }));
 }
 
 const HOME_PRESETS = [
@@ -1796,8 +1814,7 @@ function HomeScreen({
       }
     };
     const drawSectionHeader = (title, subtitle = "") => {
-      doc.setFillColor(...theme.canvasRgb);
-      doc.rect(0, 0, 210, 297, "F");
+      drawEditorialBackdrop(doc, theme, accentRgb);
       doc.setFillColor(...theme.sectionBarRgb);
       doc.rect(0, 0, 210, 16, "F");
       if (brandImage.variant === "header") {
@@ -1975,11 +1992,17 @@ function HomeScreen({
     doc.text(locationTitle, 18, 256, { maxWidth: 86 });
     statCards.forEach((stat, index) => {
       const x = 152;
-      doc.setFillColor(...accentSoftRgb);
-      doc.roundedRect(x, 226 + index * 14, 44, 11, 4, 4, "F");
-      doc.setTextColor(...theme.accentDarkRgb);
-      doc.setFontSize(8);
-      doc.text(`${stat.value} ${stat.label}`, x + 22, 233 + index * 14, { align: "center", maxWidth: 38 });
+      const y = 224 + index * 15;
+      doc.setFillColor(...theme.coverPanelRgb);
+      doc.setGState(new doc.GState({ opacity: 0.84 }));
+      doc.roundedRect(x, y, 44, 13, 5, 5, "F");
+      doc.setGState(new doc.GState({ opacity: 1 }));
+      doc.setDrawColor(255, 255, 255);
+      doc.setLineWidth(0.2);
+      doc.roundedRect(x, y, 44, 13, 5, 5, "S");
+      doc.setTextColor(...theme.titleTextRgb);
+      doc.setFontSize(7.5);
+      doc.text(`${stat.value} ${stat.label}`, x + 22, y + 8.2, { align: "center", maxWidth: 38 });
     });
 
     doc.addPage();
@@ -2266,13 +2289,13 @@ function HomeScreen({
       doc.setFontSize(28);
       doc.text(home.name, 20, isHeaderBanner ? 92 : 80, { maxWidth: 120 });
       doc.setFontSize(11);
-      doc.setTextColor(228, 232, 238);
+      doc.setTextColor(...theme.coverBodyTextRgb);
       doc.text(`Generated ${generatedAt}`, 20, isHeaderBanner ? 104 : 92);
       if (companyName) {
         doc.text(`Prepared by ${companyName}`, 20, isHeaderBanner ? 112 : 100);
       }
 
-      doc.setTextColor(...theme.bodyTextRgb);
+      doc.setTextColor(...theme.coverBodyTextRgb);
       doc.setFontSize(12);
       doc.text(
         "A clean, presentation-ready export covering property systems, layout, and inspection records in one consistent pack.",
@@ -2326,8 +2349,7 @@ function HomeScreen({
       doc.addPage();
       currentY = 24;
       sectionStartPages[key] = doc.getCurrentPageInfo().pageNumber;
-      doc.setFillColor(...theme.canvasRgb);
-      doc.rect(0, 0, 210, 297, "F");
+      drawEditorialBackdrop(doc, theme, accentRgb);
       doc.setFillColor(...theme.sectionBarRgb);
       doc.rect(0, 0, 210, 16, "F");
       if (brandImage.dataUrl) {
@@ -2451,8 +2473,7 @@ function HomeScreen({
       const wallThicknessMeters = normalizeWallThickness(home.floorplanLayout?.wallThicknessMeters);
       const wallStrokeWidth = Math.max(0.6, Math.min(3.2, wallThicknessMeters * 7));
 
-      doc.setFillColor(...theme.canvasRgb);
-      doc.rect(0, 0, 210, 297, "F");
+      drawEditorialBackdrop(doc, theme, accentRgb);
       doc.setFillColor(...theme.sectionBarRgb);
       doc.rect(0, 0, 210, 16, "F");
       if (brandImage.dataUrl) {

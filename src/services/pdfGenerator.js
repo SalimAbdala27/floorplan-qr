@@ -99,22 +99,38 @@ function createPdfThemeTokens(primaryRgb, accentRgb, preset = "light") {
   return {
     accentDarkRgb,
     accentSoftRgb,
-    canvasRgb: [248, 250, 252],
+    canvasRgb: [255, 248, 239],
     sectionBarRgb: accentDarkRgb,
     coverRgb: primaryRgb,
-    cardRgb: [255, 255, 255],
-    cardAltRgb: [248, 250, 252],
-    cardMutedRgb: accentSoftRgb,
-    borderRgb: [228, 228, 231],
+    cardRgb: [255, 252, 247],
+    cardAltRgb: [247, 242, 232],
+    cardMutedRgb: [250, 244, 235],
+    borderRgb: [232, 223, 210],
     titleTextRgb: primaryRgb,
-    bodyTextRgb: [82, 82, 91],
-    mutedTextRgb: [113, 113, 122],
+    bodyTextRgb: [70, 82, 98],
+    mutedTextRgb: [94, 104, 118],
     inverseTextRgb: [255, 255, 255],
-    footerTextRgb: [113, 113, 122],
-    footerLineRgb: accentSoftRgb,
+    footerTextRgb: [125, 112, 100],
+    footerLineRgb: [234, 223, 208],
     tableHeadRgb: primaryRgb,
-    imagePlaceholderRgb: [245, 245, 244],
+    imagePlaceholderRgb: [246, 239, 230],
   };
+}
+
+function drawEditorialBackdrop(doc, theme, accentRgb, options = {}) {
+  const topRight = options.topRight ?? { x: 184, y: 30, r: 28 };
+  const bottomLeft = options.bottomLeft ?? { x: 30, y: 252, r: 22 };
+  const glow = options.glow ?? { x: 42, y: 44, r: 34 };
+  doc.setFillColor(theme.canvasRgb[0], theme.canvasRgb[1], theme.canvasRgb[2]);
+  doc.rect(0, 0, 210, 297, "F");
+  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+  doc.setGState(new doc.GState({ opacity: 0.14 }));
+  doc.circle(topRight.x, topRight.y, topRight.r, "F");
+  doc.setFillColor(theme.cardMutedRgb[0], theme.cardMutedRgb[1], theme.cardMutedRgb[2]);
+  doc.circle(bottomLeft.x, bottomLeft.y, bottomLeft.r, "F");
+  doc.setFillColor(theme.cardAltRgb[0], theme.cardAltRgb[1], theme.cardAltRgb[2]);
+  doc.circle(glow.x, glow.y, glow.r, "F");
+  doc.setGState(new doc.GState({ opacity: 1 }));
 }
 
 function conditionTone(value) {
@@ -168,8 +184,7 @@ function drawDivider(doc, y, rgb) {
 }
 
 function drawSectionHeading(doc, title, subtitle, y, primaryRgb, accentRgb, theme) {
-  doc.setFillColor(theme.canvasRgb[0], theme.canvasRgb[1], theme.canvasRgb[2]);
-  doc.rect(0, 0, 210, 297, "F");
+  drawEditorialBackdrop(doc, theme, accentRgb);
   doc.setFillColor(theme.sectionBarRgb[0], theme.sectionBarRgb[1], theme.sectionBarRgb[2]);
   doc.rect(0, 0, 210, 16, "F");
   doc.setFontSize(8);
@@ -455,7 +470,13 @@ export function appendInventoryPdf(doc, report, roomsById, propertyName = "Prope
   doc.setFillColor(theme.coverRgb[0], theme.coverRgb[1], theme.coverRgb[2]);
   doc.rect(0, 0, 210, 297, "F");
   doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-  doc.rect(0, 0, 210, 10, "F");
+  doc.circle(178, 34, 34, "F");
+  doc.setFillColor(theme.cardMutedRgb[0], theme.cardMutedRgb[1], theme.cardMutedRgb[2]);
+  doc.circle(30, 248, 26, "F");
+  doc.setFillColor(theme.cardRgb[0], theme.cardRgb[1], theme.cardRgb[2]);
+  doc.setGState(new doc.GState({ opacity: 0.12 }));
+  doc.roundedRect(14, 18, 182, 250, 18, 18, "F");
+  doc.setGState(new doc.GState({ opacity: 1 }));
   doc.setFillColor(theme.cardRgb[0], theme.cardRgb[1], theme.cardRgb[2]);
   doc.roundedRect(14, 18, 182, 110, 10, 10, "F");
 
@@ -496,13 +517,17 @@ export function appendInventoryPdf(doc, report, roomsById, propertyName = "Prope
   drawPill(doc, `${totalMedia} images`, 128, metaY + 8, theme.cardRgb, theme.titleTextRgb, 4, 8);
   drawPill(doc, `${totalPanos} panoramas`, 128, metaY + 19, theme.cardRgb, theme.titleTextRgb, 4, 8);
 
+  doc.setFillColor(theme.cardRgb[0], theme.cardRgb[1], theme.cardRgb[2]);
+  doc.setGState(new doc.GState({ opacity: 0.14 }));
+  doc.roundedRect(14, 138, 182, 34, 10, 10, "F");
+  doc.setGState(new doc.GState({ opacity: 1 }));
   doc.setFontSize(10);
   doc.setTextColor(theme.inverseTextRgb[0], theme.inverseTextRgb[1], theme.inverseTextRgb[2]);
-  doc.text("A visual record of room condition, grouped by area for quick review.", 14, 146);
-  drawDivider(doc, 152, accentRgb);
+  doc.text("A visual record of room condition, grouped by area for quick review.", 20, 151);
+  drawDivider(doc, 156, accentRgb);
   doc.setFontSize(9);
   doc.setTextColor(theme.bodyTextRgb[0], theme.bodyTextRgb[1], theme.bodyTextRgb[2]);
-  doc.text("Clean image cards, assignment-based subsections, traffic-light condition markers, and a final summary.", 14, 160);
+  doc.text("Clean image cards, assignment-based subsections, traffic-light condition markers, and a final summary.", 20, 165);
 
   rooms.forEach((roomInventory) => {
     doc.addPage();
