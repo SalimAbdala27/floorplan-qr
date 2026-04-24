@@ -7,8 +7,19 @@ import FloorplanCanvas from "./components/FloorplanCanvas.jsx";
 import InventoryFlow from "./components/InventoryFlow.jsx";
 import MarketingBrochureFlow from "./components/MarketingBrochureFlow.jsx";
 import AuthScreen from "./components/AuthScreen.jsx";
+import SubscriptionGate from "./components/SubscriptionGate.jsx";
 import { appendInventoryPdf } from "./services/pdfGenerator.js";
 import { supabase } from "./lib/supabaseClient";
+import {
+  createCheckoutSession,
+  cancelSubscriptionAtPeriodEnd,
+  createCustomerPortalSession,
+} from "./services/billingService.js";
+import {
+  fetchSubscriptionRecord,
+  hasActiveSubscription,
+  normalizeSubscriptionRecord,
+} from "./services/subscriptionAccess.js";
 import {
   applyConstraints,
   layoutToStructuredPlan,
@@ -907,6 +918,7 @@ function HomeScreen({
   home,
   onBack,
   userEmail,
+  subscription,
   onSignOut,
   onUpdateHome,
   onDeleteHome,
@@ -917,6 +929,8 @@ function HomeScreen({
   onPdfHeaderLogoSelected,
   onRemovePdfLogo,
   onRemovePdfHeaderLogo,
+  canExportPdf,
+  onRequireSubscription,
 }) {
   const [newFuseRating, setNewFuseRating] = useState("B6");
   const [targetFuseCount, setTargetFuseCount] = useState("12");
@@ -2220,11 +2234,19 @@ function HomeScreen({
   };
 
   const exportMarketingBrochurePdf = () => {
+    if (!canExportPdf) {
+      onRequireSubscription?.();
+      return;
+    }
     const doc = new jsPDF();
     appendMarketingBrochurePdf(doc, { save: true, applyPageNumbers: true });
   };
 
   const exportReportPdf = () => {
+    if (!canExportPdf) {
+      onRequireSubscription?.();
+      return;
+    }
     const selectedKeys = Object.entries(reportSections)
       .filter(([, enabled]) => enabled)
       .map(([key]) => key);
@@ -3181,14 +3203,40 @@ function HomeScreen({
             </button>
             <button
               type="button"
-              onClick={() => setExportModalOpen(true)}
+              onClick={() => {
+                if (!canExportPdf) {
+                  onRequireSubscription?.();
+                  return;
+                }
+                setExportModalOpen(true);
+              }}
               className="h-8 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-300"
             >
-              Export PDF
+              {canExportPdf ? "Export PDF" : "Unlock PDF"}
             </button>
           </div>
         </div>
       </div>
+
+      {!canExportPdf ? (
+        <div className="px-4 pt-3">
+          <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 shadow-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-800">Subscription</p>
+            <p className="mt-1 text-xs text-amber-700">
+              You can keep building reports and collecting media. PDF exports unlock once this account has an active subscription.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="px-4 pt-3">
+          <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 shadow-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-800">Subscription</p>
+            <p className="mt-1 text-xs text-emerald-700">
+              {subscription?.planName || "Paid"} plan active. PDF exports are enabled for this account.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="px-4 pt-3">
         <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl rounded-2xl border border-zinc-200 bg-white p-2 shadow-sm">
@@ -3776,6 +3824,8 @@ function HomeScreen({
               onRemoveBrandLogo={onRemovePdfLogo}
               onRemoveBrandHeaderLogo={onRemovePdfHeaderLogo}
               onAddRoom={addRoomToHome}
+              canExportPdf={canExportPdf}
+              onRequireSubscription={onRequireSubscription}
               onReportChange={(report) =>
                 updateHome((prev) => ({
                   ...prev,
@@ -3811,6 +3861,7 @@ function HomeScreen({
           onRemoveGalleryImage={removeBrochureGalleryImage}
           onToggleInventoryMedia={toggleInventoryBrochureMedia}
           onExportBrochure={exportMarketingBrochurePdf}
+          canExportPdf={canExportPdf}
         />
       ) : null}
 
@@ -4053,12 +4104,15 @@ function HomesIndex({
   onSignOut,
   onRenameHome,
   userEmail,
+  subscription,
   pdfBranding,
   onPdfBrandingChange,
   onPdfLogoSelected,
   onPdfHeaderLogoSelected,
   onRemovePdfLogo,
   onRemovePdfHeaderLogo,
+  canExportPdf,
+  onRequireSubscription,
 }) {
   const [newHomeName, setNewHomeName] = useState("");
   const [presetKey, setPresetKey] = useState(HOME_PRESETS[0].key);
@@ -4096,6 +4150,10 @@ function HomesIndex({
             <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Account</p>
               <p className="truncate text-[11px] font-medium text-zinc-700">{userEmail || "Unknown"}</p>
+              <p className="mt-0.5 text-[11px] text-zinc-500">
+                Plan: <span className="font-medium text-zinc-700">{subscription?.planName || "Free"}</span>
+                {subscription?.billingInterval ? ` · ${subscription.billingInterval}` : ""}
+              </p>
             </div>
             <button
               type="button"
@@ -4106,6 +4164,44 @@ function HomesIndex({
             </button>
           </div>
         </div>
+
+        {!canExportPdf ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-800">PDF Exports Locked</p>
+                <p className="mt-1 text-xs text-amber-700">
+                  You can create homes and fill in reports now. Upgrade when you are ready to export PDFs.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onRequireSubscription}
+                className="h-9 shrink-0 rounded-lg bg-amber-600 px-3 text-[11px] font-semibold text-white transition hover:bg-amber-500"
+              >
+                View plans
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-800">PDF Exports Enabled</p>
+                <p className="mt-1 text-xs text-emerald-700">
+                  {subscription?.planName || "Paid"} plan active. Client-ready PDF exports are available on this account.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onRequireSubscription}
+                className="h-9 shrink-0 rounded-lg bg-white px-3 text-[11px] font-semibold text-emerald-800 transition hover:bg-emerald-100"
+              >
+                View plan
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
@@ -4325,6 +4421,11 @@ function HomesIndex({
 export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [subscription, setSubscription] = useState(() => normalizeSubscriptionRecord(null));
+  const [subscriptionPromptOpen, setSubscriptionPromptOpen] = useState(false);
+  const [billingAction, setBillingAction] = useState("");
+  const [billingError, setBillingError] = useState("");
   const [homes, setHomes] = useState([]);
   const [activeHomeId, setActiveHomeId] = useState(null);
   const [renameHomeId, setRenameHomeId] = useState(null);
@@ -4357,6 +4458,8 @@ export default function App() {
 
   useEffect(() => {
     if (!userId) {
+      setSubscription(normalizeSubscriptionRecord(null));
+      setSubscriptionLoading(false);
       setHomes([]);
       setActiveHomeId(null);
       return;
@@ -4366,6 +4469,37 @@ export default function App() {
     setHomes(localState?.homes ?? []);
     setActiveHomeId(null);
     setPdfBranding(normalizePdfBranding(localState?.pdfBranding));
+  }, [userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!userId) {
+      return undefined;
+    }
+
+    setSubscriptionLoading(true);
+
+    fetchSubscriptionRecord(userId)
+      .then((nextSubscription) => {
+        if (!cancelled) {
+          setSubscription(nextSubscription);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSubscription(normalizeSubscriptionRecord(null));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSubscriptionLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   useEffect(() => {
@@ -4418,6 +4552,75 @@ export default function App() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+  };
+
+  const canExportPdf = hasActiveSubscription(subscription);
+
+  const refreshSubscription = async () => {
+    if (!userId) return;
+    setBillingError("");
+    setSubscriptionLoading(true);
+    try {
+      const nextSubscription = await fetchSubscriptionRecord(userId);
+      setSubscription(nextSubscription);
+    } catch {
+      setSubscription(normalizeSubscriptionRecord(null));
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  };
+
+  const handleStartCheckout = async () => {
+    setBillingAction("subscribe");
+    setBillingError("");
+    try {
+      const { url } = await createCheckoutSession();
+      if (!url) {
+        throw new Error("Stripe checkout URL was not returned.");
+      }
+      window.location.assign(url);
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : "Could not open checkout.");
+      setBillingAction("");
+    }
+  };
+
+  const handleManageBilling = async () => {
+    setBillingAction("portal");
+    setBillingError("");
+    try {
+      const { url } = await createCustomerPortalSession();
+      if (!url) {
+        throw new Error("Stripe billing portal URL was not returned.");
+      }
+      window.location.assign(url);
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : "Could not open billing.");
+      setBillingAction("");
+    }
+  };
+
+  const handleRefreshSubscription = async () => {
+    setBillingAction("refresh");
+    setBillingError("");
+    try {
+      await refreshSubscription();
+    } finally {
+      setBillingAction("");
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    setBillingAction("cancel");
+    setBillingError("");
+    try {
+      await cancelSubscriptionAtPeriodEnd();
+      await refreshSubscription();
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : "Could not schedule cancellation.");
+    } finally {
+      setBillingAction("");
+    }
   };
 
   const handlePdfBrandingChange = (mutator) => {
@@ -4505,7 +4708,7 @@ export default function App() {
     closeRenameHome();
   };
 
-  if (loading) {
+  if (loading || subscriptionLoading) {
     return (
       <div className="min-h-screen bg-neutral-100 flex items-center justify-center">
         <p className="text-sm text-zinc-600">Loading...</p>
@@ -4527,10 +4730,13 @@ export default function App() {
       onSignOut={handleSignOut}
       onRenameHome={openRenameHome}
       userEmail={session.user?.email}
+      subscription={subscription}
       pdfBranding={pdfBranding}
       onPdfBrandingChange={handlePdfBrandingChange}
       onPdfLogoSelected={handlePdfLogoSelected}
       onPdfHeaderLogoSelected={handlePdfHeaderLogoSelected}
+      canExportPdf={canExportPdf}
+      onRequireSubscription={() => setSubscriptionPromptOpen(true)}
       onRemovePdfLogo={() =>
         handlePdfBrandingChange((prev) => ({
           ...prev,
@@ -4554,9 +4760,12 @@ export default function App() {
       onDeleteHome={deleteHome}
       onRenameHome={openRenameHome}
       pdfBranding={pdfBranding}
+      subscription={subscription}
       onPdfBrandingChange={handlePdfBrandingChange}
       onPdfLogoSelected={handlePdfLogoSelected}
       onPdfHeaderLogoSelected={handlePdfHeaderLogoSelected}
+      canExportPdf={canExportPdf}
+      onRequireSubscription={() => setSubscriptionPromptOpen(true)}
       onRemovePdfLogo={() =>
         handlePdfBrandingChange((prev) => ({
           ...prev,
@@ -4606,6 +4815,20 @@ export default function App() {
             </div>
           </div>
         </div>
+      ) : null}
+      {subscriptionPromptOpen ? (
+        <SubscriptionGate
+          userEmail={session.user?.email}
+          subscription={subscription}
+          onRefresh={handleRefreshSubscription}
+          onSignOut={handleSignOut}
+          onClose={() => setSubscriptionPromptOpen(false)}
+          onSubscribe={handleStartCheckout}
+          onManageBilling={handleManageBilling}
+          onCancelSubscription={handleCancelSubscription}
+          busyAction={billingAction}
+          errorMessage={billingError}
+        />
       ) : null}
     </div>
   );

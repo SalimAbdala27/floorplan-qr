@@ -49,6 +49,7 @@ export default function MarketingBrochureFlow({
   onRemoveGalleryImage,
   onToggleInventoryMedia,
   onExportBrochure,
+  canExportPdf = true,
 }) {
   const derivedStats = deriveStats(home.rooms || [], floors || []);
   const stats = {
@@ -523,8 +524,13 @@ export default function MarketingBrochureFlow({
               onClick={onExportBrochure}
               className="h-10 w-full rounded-lg bg-zinc-800 px-3 text-xs font-semibold text-white"
             >
-              Export Marketing Brochure PDF
+              {canExportPdf ? "Export Marketing Brochure PDF" : "Unlock Marketing Brochure PDF"}
             </button>
+            {!canExportPdf ? (
+              <p className="text-[11px] text-amber-700">
+                Brochure editing stays available, but the PDF export unlocks with an active subscription.
+              </p>
+            ) : null}
           </div>
         </div>
 

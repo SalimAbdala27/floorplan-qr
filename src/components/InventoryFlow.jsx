@@ -96,6 +96,8 @@ export default function InventoryFlow({
   onRemoveBrandLogo,
   onRemoveBrandHeaderLogo,
   onAddRoom,
+  canExportPdf = true,
+  onRequireSubscription,
 }) {
   const currentReport = useInventoryStore((s) => s.currentReport);
   const activeRoomId = useInventoryStore((s) => s.activeRoomId);
@@ -209,6 +211,18 @@ export default function InventoryFlow({
     } finally {
       setDownloadZipBusy(false);
     }
+  };
+
+  const handleExportInventoryPdf = () => {
+    if (!canExportPdf) {
+      onRequireSubscription?.();
+      return;
+    }
+
+    generateInventoryPdf(currentReport, roomsById, propertyName, {
+      branding: inventoryBranding,
+      includeLegionella: includeLegionellaInPdf,
+    });
   };
 
   return (
@@ -586,18 +600,18 @@ export default function InventoryFlow({
                 </button>
                 <button
                   type="button"
-                  onClick={() =>
-                    generateInventoryPdf(currentReport, roomsById, propertyName, {
-                      branding: inventoryBranding,
-                      includeLegionella: includeLegionellaInPdf,
-                    })
-                  }
+                  onClick={handleExportInventoryPdf}
                   className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white"
                 >
-                  Export Inventory PDF
+                  {canExportPdf ? "Export Inventory PDF" : "Unlock Inventory PDF"}
                 </button>
               </div>
             </div>
+            {!canExportPdf ? (
+              <p className="mt-2 text-[11px] text-amber-700">
+                PDF export needs an active subscription. You can still complete the inventory and upload media first.
+              </p>
+            ) : null}
           </div>
         </>
       ) : null}
