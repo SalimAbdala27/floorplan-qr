@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import InventoryRoom from "./InventoryRoom.jsx";
 import DeclarationForm from "./DeclarationForm.jsx";
 import LegionellaAssessment from "./LegionellaAssessment.jsx";
+import ColorHexField from "./ColorHexField.jsx";
 import {
   useInventoryStore,
   initializeInventoryReport,
@@ -497,28 +498,28 @@ export default function InventoryFlow({
                   Use Header Logo
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="color"
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <ColorHexField
+                  label="Primary"
                   value={inventoryBranding.primaryColor}
-                  onChange={(event) =>
+                  fallback="#1f2937"
+                  onChange={(primaryColor) =>
                     onBrandingChange?.((prev) => ({
                       ...prev,
-                      primaryColor: event.target.value,
+                      primaryColor,
                     }))
                   }
-                  className="h-9 w-full rounded border border-zinc-300"
                 />
-                <input
-                  type="color"
+                <ColorHexField
+                  label="Accent"
                   value={inventoryBranding.accentColor}
-                  onChange={(event) =>
+                  fallback="#15803d"
+                  onChange={(accentColor) =>
                     onBrandingChange?.((prev) => ({
                       ...prev,
-                      accentColor: event.target.value,
+                      accentColor,
                     }))
                   }
-                  className="h-9 w-full rounded border border-zinc-300"
                 />
               </div>
               <div className="flex items-center gap-2">

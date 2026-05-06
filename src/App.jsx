@@ -8,6 +8,7 @@ import InventoryFlow from "./components/InventoryFlow.jsx";
 import MarketingBrochureFlow from "./components/MarketingBrochureFlow.jsx";
 import AuthScreen from "./components/AuthScreen.jsx";
 import SubscriptionGate from "./components/SubscriptionGate.jsx";
+import ColorHexField from "./components/ColorHexField.jsx";
 import { appendInventoryPdf } from "./services/pdfGenerator.js";
 import { supabase } from "./lib/supabaseClient";
 import {
@@ -109,6 +110,8 @@ function createServiceCheckEntry(recorded = false) {
     recorded: Boolean(recorded),
     worksAt: null,
     testedAt: null,
+    pointLocation: "",
+    notes: "",
   };
 }
 
@@ -118,7 +121,36 @@ function normalizeServiceCheckEntry(value) {
     recorded: Boolean(value?.recorded || value?.worksAt || value?.testedAt),
     worksAt: typeof value?.worksAt === "string" && value.worksAt ? value.worksAt : null,
     testedAt: typeof value?.testedAt === "string" && value.testedAt ? value.testedAt : null,
+    pointLocation: typeof value?.pointLocation === "string" ? value.pointLocation : "",
+    notes: typeof value?.notes === "string" ? value.notes : "",
   };
+}
+
+function normalizeFuseboxes(value, legacyPhoto = null) {
+  const source = Array.isArray(value) ? value : [];
+  const normalized = source
+    .filter((fusebox) => fusebox?.photo || fusebox?.label || fusebox?.location || fusebox?.notes)
+    .map((fusebox, index) => ({
+      id: fusebox?.id || `fusebox_${Date.now()}_${index}`,
+      label: String(fusebox?.label || `Fusebox ${index + 1}`),
+      location: String(fusebox?.location || ""),
+      notes: String(fusebox?.notes || ""),
+      photo: fusebox?.photo || null,
+    }));
+
+  if (!normalized.length && legacyPhoto) {
+    return [
+      {
+        id: "fusebox_legacy_main",
+        label: "Main Fusebox",
+        location: "",
+        notes: "",
+        photo: legacyPhoto,
+      },
+    ];
+  }
+
+  return normalized;
 }
 
 function buildServiceCheckMapFromRooms(rooms, defaultValue = false) {
@@ -884,6 +916,7 @@ function createBaseHome(id, name, presetKey) {
     breakers: {},
     nextFuseNumber: 1,
     fuseboxPhoto: null,
+    fuseboxes: [],
     gasChecks: buildServiceCheckMapFromRooms(rooms, false),
     fireAlarmChecks: buildServiceCheckMapFromRooms(rooms, false),
     floorplanLayout: buildPresetLayout(preset.key, rooms),
@@ -988,6 +1021,20 @@ function HomeScreen({
     setFloorplanStep("preset");
   }, [activeFlow]);
 
+  useEffect(() => {
+    if (!exportModalOpen) return;
+
+    const bodyOverflow = document.body.style.overflow;
+    const htmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = bodyOverflow;
+      document.documentElement.style.overflow = htmlOverflow;
+    };
+  }, [exportModalOpen]);
+
   const skipFloorplanStep = () => {
     const currentIndex = floorplanStepOrder.indexOf(floorplanStep);
     const nextIndex = Math.min(currentIndex + 1, floorplanStepOrder.length - 1);
@@ -1002,6 +1049,10 @@ function HomeScreen({
     const normalized = normalizeFloorplanLayout(home.floorplanLayout, home.rooms);
     return normalized.floors;
   }, [home.floorplanLayout, home.rooms]);
+  const fuseboxes = useMemo(
+    () => normalizeFuseboxes(home.fuseboxes, home.fuseboxPhoto),
+    [home.fuseboxes, home.fuseboxPhoto]
+  );
   const floorNameById = useMemo(
     () => Object.fromEntries(floors.map((floor) => [floor.id, floor.name])),
     [floors]
@@ -1178,6 +1229,8 @@ function HomeScreen({
       breakers: normalizedBreakers,
       gasChecks: normalizeServiceMap(nextHome.gasChecks),
       fireAlarmChecks: normalizeServiceMap(nextHome.fireAlarmChecks),
+      fuseboxes: normalizeFuseboxes(nextHome.fuseboxes, nextHome.fuseboxPhoto),
+      fuseboxPhoto: null,
       floorplanLayout: normalizedLayout,
       inventoryReport: normalizedInventoryReport,
       marketingBrochure: normalizedMarketingBrochure,
@@ -1575,6 +1628,19 @@ function HomeScreen({
   const toggleFireAlarmCheck = (roomId, timestampKey) =>
     toggleServiceCheck("fireAlarmChecks", roomId, timestampKey);
 
+  const updateServiceCheckDetails = (field, roomId, patch) => {
+    updateHome((prev) => ({
+      ...prev,
+      [field]: {
+        ...prev[field],
+        [roomId]: {
+          ...normalizeServiceCheckEntry(prev[field]?.[roomId]),
+          ...patch,
+        },
+      },
+    }));
+  };
+
   const regenerateRoomsFromPreset = () => {
     const nextPreset = getPresetByKey(generatorPresetKey);
     const nextRooms = buildRoomsFromPreset(nextPreset.key);
@@ -1660,15 +1726,49 @@ function HomeScreen({
 
     try {
       const dataUrl = await compressImageFileToDataUrl(file);
+      const existingFuseboxes = normalizeFuseboxes(home.fuseboxes, home.fuseboxPhoto);
       updateHome((prev) => ({
         ...prev,
-        fuseboxPhoto: dataUrl,
+        fuseboxes: [
+          ...normalizeFuseboxes(prev.fuseboxes, prev.fuseboxPhoto),
+          {
+            id: `fusebox_${Date.now()}`,
+            label: `Fusebox ${existingFuseboxes.length + 1}`,
+            location: "",
+            notes: "",
+            photo: dataUrl,
+          },
+        ],
+        fuseboxPhoto: null,
       }));
     } catch {
       // no-op; keep flow simple for now
     } finally {
       event.target.value = "";
     }
+  };
+
+  const updateFuseboxRecord = (fuseboxId, patch) => {
+    updateHome((prev) => ({
+      ...prev,
+      fuseboxes: normalizeFuseboxes(prev.fuseboxes, prev.fuseboxPhoto).map((fusebox) =>
+        fusebox.id === fuseboxId
+          ? {
+              ...fusebox,
+              ...patch,
+            }
+          : fusebox
+      ),
+      fuseboxPhoto: null,
+    }));
+  };
+
+  const removeFuseboxRecord = (fuseboxId) => {
+    updateHome((prev) => ({
+      ...prev,
+      fuseboxes: normalizeFuseboxes(prev.fuseboxes, prev.fuseboxPhoto).filter((fusebox) => fusebox.id !== fuseboxId),
+      fuseboxPhoto: null,
+    }));
   };
 
   const updateMarketingBrochure = (patch) => {
@@ -2926,13 +3026,13 @@ function HomeScreen({
       addStatCards([
         { label: "Fuses", value: home.fuses.length || 0 },
         { label: "Rooms", value: home.rooms.length || 0 },
-        { label: "Main Switch", value: "100A ON" },
+        { label: "Fuseboxes", value: fuseboxes.length || 0 },
       ]);
-      if (home.fuseboxPhoto) {
+      if (fuseboxes.length) {
         doc.setFillColor(255, 255, 255);
         doc.roundedRect(14, currentY, 86, 58, 8, 8, "F");
         try {
-          addContainedImage(doc, home.fuseboxPhoto, 18, currentY + 4, 78, 50);
+          addContainedImage(doc, fuseboxes[0].photo, 18, currentY + 4, 78, 50);
         } catch {
           doc.setTextColor(113, 113, 122);
           doc.setFontSize(9);
@@ -2953,6 +3053,14 @@ function HomeScreen({
           lineHeightFactor: 1.45,
         });
         currentY += 68;
+        addMagazineTable(
+          ["Fusebox", "Location", "Notes"],
+          fuseboxes.map((fusebox, index) => [
+            fusebox.label || `Fusebox ${index + 1}`,
+            fusebox.location || "Not recorded",
+            fusebox.notes || "No notes",
+          ])
+        );
       } else {
         addInfoPanel("Status", "Main Switch: 100A Main Isolator (ON)");
       }
@@ -3060,14 +3168,16 @@ function HomeScreen({
       const gasBody = home.rooms.map((room) => [
         room.name,
         floorNameById[room.floorId] || getDefaultFloorNameById(room.floorId || "floor_1"),
+        home.gasChecks?.[room.id]?.pointLocation || "Not recorded",
         home.gasChecks?.[room.id]?.worksAt ? "Yes" : home.gasChecks?.[room.id]?.recorded ? "Legacy" : "No",
         formatRecordedTimestamp(home.gasChecks?.[room.id]?.worksAt),
         home.gasChecks?.[room.id]?.testedAt ? "Yes" : "No",
         formatRecordedTimestamp(home.gasChecks?.[room.id]?.testedAt),
+        home.gasChecks?.[room.id]?.notes || "",
       ]);
       addMagazineTable(
-        ["Room", "Floor", "Works", "Works At", "Tested", "Tested At"],
-        gasBody.length ? gasBody : [["-", "-", "-", "-", "-", "No rooms"]]
+        ["Room", "Floor", "Point Location", "Works", "Works At", "Tested", "Tested At", "Notes"],
+        gasBody.length ? gasBody : [["-", "-", "-", "-", "-", "-", "-", "No rooms"]]
       );
       drawReportFooter();
     }
@@ -3089,14 +3199,16 @@ function HomeScreen({
       const fireBody = home.rooms.map((room) => [
         room.name,
         floorNameById[room.floorId] || getDefaultFloorNameById(room.floorId || "floor_1"),
+        home.fireAlarmChecks?.[room.id]?.pointLocation || "Not recorded",
         home.fireAlarmChecks?.[room.id]?.worksAt ? "Yes" : home.fireAlarmChecks?.[room.id]?.recorded ? "Legacy" : "No",
         formatRecordedTimestamp(home.fireAlarmChecks?.[room.id]?.worksAt),
         home.fireAlarmChecks?.[room.id]?.testedAt ? "Yes" : "No",
         formatRecordedTimestamp(home.fireAlarmChecks?.[room.id]?.testedAt),
+        home.fireAlarmChecks?.[room.id]?.notes || "",
       ]);
       addMagazineTable(
-        ["Room", "Floor", "Works", "Works At", "Tested", "Tested At"],
-        fireBody.length ? fireBody : [["-", "-", "-", "-", "-", "No rooms"]]
+        ["Room", "Floor", "Point Location", "Works", "Works At", "Tested", "Tested At", "Notes"],
+        fireBody.length ? fireBody : [["-", "-", "-", "-", "-", "-", "-", "No rooms"]]
       );
       drawReportFooter();
     }
@@ -3246,7 +3358,7 @@ function HomeScreen({
               { key: "gas", label: "Gas" },
               { key: "fire", label: "Fire Alarms" },
               { key: "inventory", label: "Inventory" },
-              { key: "floorplan", label: "Floorplan Gen" },
+              { key: "floorplan", label: "Floorplan Gen [BETA]" },
               { key: "brochure", label: "Brochure" },
             ].map((flow) => (
               <button
@@ -3308,11 +3420,14 @@ function HomeScreen({
       <div className="px-4 pt-3">
         <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
-            Fusebox Photo
+            Fuseboxes
+          </p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Add one or more fuseboxes, including their location and any notes.
           </p>
           <div className="mt-2 flex items-center gap-2">
             <label className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700 flex items-center cursor-pointer">
-              Take / Upload
+              Add Fusebox
               <input
                 type="file"
                 accept="image/*"
@@ -3321,29 +3436,60 @@ function HomeScreen({
                 onChange={onFuseboxPhotoSelected}
               />
             </label>
-            {home.fuseboxPhoto ? (
-              <button
-                type="button"
-                onClick={() =>
-                  updateHome((prev) => ({
-                    ...prev,
-                    fuseboxPhoto: null,
-                  }))
-                }
-                className="h-9 rounded-lg bg-zinc-200 px-3 text-[11px] font-semibold text-zinc-700"
-              >
-                Remove Photo
-              </button>
-            ) : null}
           </div>
-          {home.fuseboxPhoto ? (
-            <img
-              src={home.fuseboxPhoto}
-              alt="Fusebox upload"
-              className="mt-2 w-full rounded-lg border border-zinc-200 object-cover"
-            />
+          {fuseboxes.length ? (
+            <div className="mt-3 space-y-2">
+              {fuseboxes.map((fusebox, index) => (
+                <div key={fusebox.id} className="rounded-xl border border-zinc-200 bg-zinc-50 p-2">
+                  {fusebox.photo ? (
+                    <img
+                      src={fusebox.photo}
+                      alt={fusebox.label || `Fusebox ${index + 1}`}
+                      className="h-40 w-full rounded-lg border border-zinc-200 object-cover"
+                    />
+                  ) : null}
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="text-[10px] text-zinc-500">
+                      Label
+                      <input
+                        value={fusebox.label}
+                        onChange={(event) => updateFuseboxRecord(fusebox.id, { label: event.target.value })}
+                        placeholder={`Fusebox ${index + 1}`}
+                        className="mt-1 h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs text-zinc-700"
+                      />
+                    </label>
+                    <label className="text-[10px] text-zinc-500">
+                      Location
+                      <input
+                        value={fusebox.location}
+                        onChange={(event) => updateFuseboxRecord(fusebox.id, { location: event.target.value })}
+                        placeholder="e.g. Hallway cupboard"
+                        className="mt-1 h-9 w-full rounded-lg border border-zinc-300 px-2 text-xs text-zinc-700"
+                      />
+                    </label>
+                  </div>
+                  <label className="mt-2 block text-[10px] text-zinc-500">
+                    Notes
+                    <textarea
+                      value={fusebox.notes}
+                      onChange={(event) => updateFuseboxRecord(fusebox.id, { notes: event.target.value })}
+                      placeholder="Add any fusebox notes"
+                      rows={2}
+                      className="mt-1 w-full rounded-lg border border-zinc-300 px-2 py-2 text-xs text-zinc-700"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeFuseboxRecord(fusebox.id)}
+                    className="mt-2 h-8 rounded-lg bg-red-100 px-3 text-[11px] font-semibold text-red-700"
+                  >
+                    Remove Fusebox
+                  </button>
+                </div>
+              ))}
+            </div>
           ) : (
-            <p className="mt-2 text-xs text-zinc-500">No photo uploaded.</p>
+            <p className="mt-2 text-xs text-zinc-500">No fuseboxes added.</p>
           )}
         </div>
       </div>
@@ -3698,17 +3844,42 @@ function HomeScreen({
               Mark rooms that have gas points/appliances.
             </p>
             <div className="mt-2 space-y-2">
-              {home.rooms.map((room) => (
-                <button
+              {home.rooms.map((room) => {
+                const gasCheck = normalizeServiceCheckEntry(home.gasChecks?.[room.id]);
+                return (
+                <div
                   key={`gas-${room.id}`}
-                  type="button"
                   className={`w-full rounded-lg border px-3 py-2 text-left ${
-                    home.gasChecks?.[room.id]?.worksAt || home.gasChecks?.[room.id]?.testedAt
+                    gasCheck.worksAt || gasCheck.testedAt || gasCheck.pointLocation || gasCheck.notes
                       ? "border-emerald-300 bg-emerald-50"
                       : "border-zinc-200 bg-zinc-50"
                   }`}
                 >
                   <p className="text-sm font-semibold text-zinc-700">{room.name}</p>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="text-[10px] text-zinc-500">
+                      Gas point / appliance location
+                      <input
+                        value={gasCheck.pointLocation}
+                        onChange={(event) =>
+                          updateServiceCheckDetails("gasChecks", room.id, { pointLocation: event.target.value })
+                        }
+                        placeholder="e.g. Kitchen boiler cupboard"
+                        className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700"
+                      />
+                    </label>
+                    <label className="text-[10px] text-zinc-500">
+                      Additional notes
+                      <input
+                        value={gasCheck.notes}
+                        onChange={(event) =>
+                          updateServiceCheckDetails("gasChecks", room.id, { notes: event.target.value })
+                        }
+                        placeholder="Add gas safety notes"
+                        className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700"
+                      />
+                    </label>
+                  </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -3717,7 +3888,7 @@ function HomeScreen({
                         toggleGasCheck(room.id, "worksAt");
                       }}
                       className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
-                        home.gasChecks?.[room.id]?.worksAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
+                        gasCheck.worksAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
                       }`}
                     >
                       Works
@@ -3729,20 +3900,21 @@ function HomeScreen({
                         toggleGasCheck(room.id, "testedAt");
                       }}
                       className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
-                        home.gasChecks?.[room.id]?.testedAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
+                        gasCheck.testedAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
                       }`}
                     >
                       Tested
                     </button>
                   </div>
                   <p className="mt-2 text-xs text-zinc-500">
-                    Works: {formatRecordedTimestamp(home.gasChecks?.[room.id]?.worksAt)}
+                    Works: {formatRecordedTimestamp(gasCheck.worksAt)}
                   </p>
                   <p className="text-xs text-zinc-500">
-                    Tested: {formatRecordedTimestamp(home.gasChecks?.[room.id]?.testedAt)}
+                    Tested: {formatRecordedTimestamp(gasCheck.testedAt)}
                   </p>
-                </button>
-              ))}
+                </div>
+              );
+              })}
             </div>
           </div>
         </div>
@@ -3758,17 +3930,42 @@ function HomeScreen({
               Mark where alarms are installed/checked.
             </p>
             <div className="mt-2 space-y-2">
-              {home.rooms.map((room) => (
-                <button
+              {home.rooms.map((room) => {
+                const fireCheck = normalizeServiceCheckEntry(home.fireAlarmChecks?.[room.id]);
+                return (
+                <div
                   key={`fire-${room.id}`}
-                  type="button"
                   className={`w-full rounded-lg border px-3 py-2 text-left ${
-                    home.fireAlarmChecks?.[room.id]?.worksAt || home.fireAlarmChecks?.[room.id]?.testedAt
+                    fireCheck.worksAt || fireCheck.testedAt || fireCheck.pointLocation || fireCheck.notes
                       ? "border-emerald-300 bg-emerald-50"
                       : "border-zinc-200 bg-zinc-50"
                   }`}
                 >
                   <p className="text-sm font-semibold text-zinc-700">{room.name}</p>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="text-[10px] text-zinc-500">
+                      Alarm point location
+                      <input
+                        value={fireCheck.pointLocation}
+                        onChange={(event) =>
+                          updateServiceCheckDetails("fireAlarmChecks", room.id, { pointLocation: event.target.value })
+                        }
+                        placeholder="e.g. Hall ceiling"
+                        className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700"
+                      />
+                    </label>
+                    <label className="text-[10px] text-zinc-500">
+                      Additional notes
+                      <input
+                        value={fireCheck.notes}
+                        onChange={(event) =>
+                          updateServiceCheckDetails("fireAlarmChecks", room.id, { notes: event.target.value })
+                        }
+                        placeholder="Add fire alarm notes"
+                        className="mt-1 h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700"
+                      />
+                    </label>
+                  </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -3777,7 +3974,7 @@ function HomeScreen({
                         toggleFireAlarmCheck(room.id, "worksAt");
                       }}
                       className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
-                        home.fireAlarmChecks?.[room.id]?.worksAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
+                        fireCheck.worksAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
                       }`}
                     >
                       Works
@@ -3789,20 +3986,21 @@ function HomeScreen({
                         toggleFireAlarmCheck(room.id, "testedAt");
                       }}
                       className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
-                        home.fireAlarmChecks?.[room.id]?.testedAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
+                        fireCheck.testedAt ? "bg-emerald-600 text-white" : "bg-white text-zinc-700"
                       }`}
                     >
                       Tested
                     </button>
                   </div>
                   <p className="mt-2 text-xs text-zinc-500">
-                    Works: {formatRecordedTimestamp(home.fireAlarmChecks?.[room.id]?.worksAt)}
+                    Works: {formatRecordedTimestamp(fireCheck.worksAt)}
                   </p>
                   <p className="text-xs text-zinc-500">
-                    Tested: {formatRecordedTimestamp(home.fireAlarmChecks?.[room.id]?.testedAt)}
+                    Tested: {formatRecordedTimestamp(fireCheck.testedAt)}
                   </p>
-                </button>
-              ))}
+                </div>
+              );
+              })}
             </div>
           </div>
         </div>
@@ -3866,8 +4064,8 @@ function HomeScreen({
       ) : null}
 
       {exportModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/35 p-3">
-          <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-end overflow-y-auto overscroll-contain bg-black/35 p-3">
+          <div className="mx-auto max-h-[calc(100vh-1.5rem)] w-full max-w-[23rem] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl md:max-w-4xl lg:max-w-5xl">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600">
               Export Report
             </p>
@@ -3986,35 +4184,29 @@ function HomeScreen({
                     Use Header Logo
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600">
-                    Primary
-                    <input
-                      type="color"
-                      value={pdfBranding.primaryColor}
-                      onChange={(event) =>
-                        onPdfBrandingChange((prev) => ({
-                          ...prev,
-                          primaryColor: event.target.value,
-                        }))
-                      }
-                      className="mt-1 h-8 w-full cursor-pointer rounded border border-zinc-200"
-                    />
-                  </label>
-                  <label className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600">
-                    Accent
-                    <input
-                      type="color"
-                      value={pdfBranding.accentColor}
-                      onChange={(event) =>
-                        onPdfBrandingChange((prev) => ({
-                          ...prev,
-                          accentColor: event.target.value,
-                        }))
-                      }
-                      className="mt-1 h-8 w-full cursor-pointer rounded border border-zinc-200"
-                    />
-                  </label>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <ColorHexField
+                    label="Primary"
+                    value={pdfBranding.primaryColor}
+                    fallback="#1f2937"
+                    onChange={(primaryColor) =>
+                      onPdfBrandingChange((prev) => ({
+                        ...prev,
+                        primaryColor,
+                      }))
+                    }
+                  />
+                  <ColorHexField
+                    label="Accent"
+                    value={pdfBranding.accentColor}
+                    fallback="#15803d"
+                    onChange={(accentColor) =>
+                      onPdfBrandingChange((prev) => ({
+                        ...prev,
+                        accentColor,
+                      }))
+                    }
+                  />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700 flex items-center cursor-pointer">
@@ -4272,35 +4464,29 @@ function HomesIndex({
                 Use Header Logo
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600">
-                Primary
-                <input
-                  type="color"
-                  value={pdfBranding.primaryColor}
-                  onChange={(event) =>
-                    onPdfBrandingChange((prev) => ({
-                      ...prev,
-                      primaryColor: event.target.value,
-                    }))
-                  }
-                  className="mt-1 h-8 w-full rounded border border-zinc-200"
-                />
-              </label>
-              <label className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600">
-                Accent
-                <input
-                  type="color"
-                  value={pdfBranding.accentColor}
-                  onChange={(event) =>
-                    onPdfBrandingChange((prev) => ({
-                      ...prev,
-                      accentColor: event.target.value,
-                    }))
-                  }
-                  className="mt-1 h-8 w-full rounded border border-zinc-200"
-                />
-              </label>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <ColorHexField
+                label="Primary"
+                value={pdfBranding.primaryColor}
+                fallback="#1f2937"
+                onChange={(primaryColor) =>
+                  onPdfBrandingChange((prev) => ({
+                    ...prev,
+                    primaryColor,
+                  }))
+                }
+              />
+              <ColorHexField
+                label="Accent"
+                value={pdfBranding.accentColor}
+                fallback="#15803d"
+                onChange={(accentColor) =>
+                  onPdfBrandingChange((prev) => ({
+                    ...prev,
+                    accentColor,
+                  }))
+                }
+              />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <label className="h-10 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white flex items-center cursor-pointer">

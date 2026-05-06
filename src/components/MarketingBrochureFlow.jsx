@@ -1,4 +1,5 @@
 import Brochure from "./Brochure.jsx";
+import ColorHexField from "./ColorHexField.jsx";
 
 function countMatchingRooms(rooms, matchers) {
   return rooms.filter((room) => {
@@ -159,15 +160,13 @@ export default function MarketingBrochureFlow({
                   className="mt-1 h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm"
                 />
               </label>
-              <label className="text-[11px] font-medium text-zinc-600">
-                Accent color
-                <input
-                  type="color"
-                  value={brochure.accentColor}
-                  onChange={(event) => onBrochureChange({ accentColor: event.target.value })}
-                  className="mt-1 h-10 w-full cursor-pointer rounded-lg border border-zinc-300 bg-white px-1"
-                />
-              </label>
+              <ColorHexField
+                label="Accent color"
+                value={brochure.accentColor}
+                fallback="#15803d"
+                className="border-zinc-300"
+                onChange={(accentColor) => onBrochureChange({ accentColor })}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-2">
