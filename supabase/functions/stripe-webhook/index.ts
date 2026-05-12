@@ -87,6 +87,11 @@ async function upsertSubscriptionFromStripe(subscription: any) {
   const stripeCustomerId = typeof subscription.customer === "string"
     ? subscription.customer
     : subscription.customer?.id || null;
+  const currentPeriodEnd =
+    subscription.current_period_end ||
+    firstItem?.current_period_end ||
+    subscription.cancel_at ||
+    null;
 
   const payload = {
     user_id: userId,
@@ -95,8 +100,8 @@ async function upsertSubscriptionFromStripe(subscription: any) {
     billing_interval: billingInterval,
     stripe_customer_id: stripeCustomerId,
     stripe_subscription_id: subscription.id || null,
-    current_period_end: subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000).toISOString()
+    current_period_end: currentPeriodEnd
+      ? new Date(currentPeriodEnd * 1000).toISOString()
       : null,
     cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
     updated_at: new Date().toISOString(),

@@ -133,7 +133,7 @@ function normalizeLayout(layout) {
 function getMinSize(type) {
   if (type === "rooms") return { w: 96, h: 76 };
   if (type === "spaces") return { w: 40, h: 26 };
-  if (type === "stairs") return { w: 40, h: 40 };
+  if (type === "stairs") return { w: 40, h: 20 };
   return { w: 22, h: 8 };
 }
 
@@ -148,8 +148,7 @@ const QUICK_TOOL_GROUPS = [
   {
     title: "Kitchen",
     items: [
-      { label: "Cabinets", w: 88, h: 26 },
-      { label: "Sink", w: 64, h: 26 },
+      { label: "Kitchen Sink", w: 64, h: 26 },
       { label: "Oven / Hob", w: 72, h: 26 },
       { label: "Fridge Space", w: 72, h: 26 },
     ],
@@ -158,15 +157,14 @@ const QUICK_TOOL_GROUPS = [
     title: "Bathroom",
     items: [
       { label: "Toilet", w: 56, h: 24 },
-      { label: "Sink", w: 56, h: 24 },
+      { label: "Bathroom Sink", w: 56, h: 24 },
       { label: "Bath / Shower", w: 86, h: 26 },
     ],
   },
   {
     title: "Storage",
     items: [
-      { label: "Wardrobe", w: 78, h: 26, buttonLabel: "Wardrobes" },
-      { label: "Cupboard", w: 68, h: 24, buttonLabel: "Cupboards" },
+      { label: "Storage / Cabinets", w: 88, h: 26 },
     ],
   },
   {
@@ -179,6 +177,200 @@ const QUICK_TOOL_GROUPS = [
     ],
   },
 ];
+
+const CAD_STROKE = "#18181b";
+const CAD_DETAIL = "#52525b";
+const CAD_LIGHT = "#a1a1aa";
+const CAD_FILL = "#ffffff";
+const CAD_SURFACE = "#f8fafc";
+
+function CadSymbolSvg({ children, viewBox = "0 0 120 60" }) {
+  return (
+    <svg
+      viewBox={viewBox}
+      className="pointer-events-none absolute inset-0 h-full w-full"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <g
+        fill={CAD_FILL}
+        stroke={CAD_STROKE}
+        strokeWidth="2"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
+        vectorEffect="non-scaling-stroke"
+      >
+        {children}
+      </g>
+    </svg>
+  );
+}
+
+function DimensionTicks() {
+  return (
+    <g stroke={CAD_LIGHT} strokeWidth="1" vectorEffect="non-scaling-stroke">
+      <path d="M8 54H112M8 50v8M112 50v8" />
+      <path d="M4 8V52M1 8h6M1 52h6" />
+    </g>
+  );
+}
+
+function renderCadSpaceSymbol(label) {
+  if (label.includes("bed")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="8" y="6" width="104" height="48" />
+        <rect x="13" y="11" width="27" height="17" fill={CAD_SURFACE} stroke={CAD_DETAIL} strokeWidth="1.2" />
+        <rect x="43" y="11" width="27" height="17" fill={CAD_SURFACE} stroke={CAD_DETAIL} strokeWidth="1.2" />
+        <path d="M8 31H112" stroke={CAD_DETAIL} strokeWidth="1.2" />
+        <path d="M14 47H106" stroke={CAD_LIGHT} strokeWidth="1" strokeDasharray="4 3" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  if (label.includes("sofa")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="20" y="18" width="80" height="28" rx="2" />
+        <rect x="10" y="22" width="13" height="22" />
+        <rect x="97" y="22" width="13" height="22" />
+        <path d="M35 18V46M60 18V46M85 18V46" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <path d="M22 30H98" stroke={CAD_LIGHT} strokeWidth="1" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  if (label.includes("table")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="25" y="12" width="70" height="36" rx="1" />
+        <path d="M33 18h54M33 42h54M34 20v20M86 20v20" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <circle cx="42" cy="30" r="2.2" fill="none" stroke={CAD_LIGHT} strokeWidth="1" />
+        <circle cx="78" cy="30" r="2.2" fill="none" stroke={CAD_LIGHT} strokeWidth="1" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  if (label.includes("chair")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="41" y="17" width="38" height="26" />
+        <path d="M43 16V9H77v7M46 43v10M74 43v10" />
+        <path d="M48 23H72M48 37H72" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  if (label.includes("toilet")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="43" y="6" width="34" height="15" />
+        <path d="M47 21h26" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <ellipse cx="60" cy="37" rx="22" ry="15" />
+        <ellipse cx="60" cy="37" rx="11" ry="7" fill="none" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <path d="M53 52h14" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  if (label.includes("shower")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="13" y="8" width="94" height="44" />
+        <path d="M17 12l86 36M103 12L17 48" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <path d="M23 16c10 8 10 20 0 28" fill="none" stroke={CAD_LIGHT} strokeWidth="1" strokeDasharray="3 3" />
+        <circle cx="28" cy="17" r="2.2" fill={CAD_STROKE} stroke="none" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  if (label.includes("bath")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="10" y="9" width="100" height="42" rx="7" />
+        <rect x="17" y="15" width="86" height="30" rx="10" fill="none" stroke={CAD_DETAIL} strokeWidth="1.2" />
+        <path d="M24 22h13M24 27h13M18 51v5M102 51v5" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  if (label.includes("kitchen sink")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="18" y="9" width="84" height="42" />
+        <ellipse cx="48" cy="31" rx="17" ry="12" fill="none" stroke={CAD_DETAIL} strokeWidth="1.3" />
+        <ellipse cx="72" cy="31" rx="17" ry="12" fill="none" stroke={CAD_DETAIL} strokeWidth="1.3" />
+        <circle cx="60" cy="22" r="2" fill={CAD_DETAIL} stroke="none" />
+        <path d="M60 14v8M51 14h18" fill="none" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <path d="M25 47h70" stroke={CAD_LIGHT} strokeWidth="1" strokeDasharray="4 3" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  if (label.includes("bathroom sink") || label.includes("basin")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="31" y="9" width="58" height="42" />
+        <ellipse cx="60" cy="31" rx="18" ry="12" fill="none" stroke={CAD_DETAIL} strokeWidth="1.3" />
+        <circle cx="60" cy="31" r="2.2" fill="none" stroke={CAD_DETAIL} strokeWidth="1" />
+        <path d="M52 18c0-4 16-4 16 0M60 18v5" fill="none" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <path d="M38 47h44" stroke={CAD_LIGHT} strokeWidth="1" strokeDasharray="4 3" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  if (label.includes("sink")) {
+    return renderCadSpaceSymbol("bathroom sink");
+  }
+
+  if (label.includes("storage") || label.includes("cabinet") || label.includes("wardrobe") || label.includes("cupboard")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="9" y="9" width="102" height="42" />
+        <path d="M43 9v42M77 9v42" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <path d="M25 30h7M56 30h7M89 30h7" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <path d="M12 14h96" stroke={CAD_LIGHT} strokeWidth="1" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  if (label.includes("oven") || label.includes("hob")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="20" y="7" width="80" height="46" />
+        <path d="M20 29h80" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <circle cx="43" cy="19" r="5.2" fill="none" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <circle cx="77" cy="19" r="5.2" fill="none" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <rect x="39" y="35" width="42" height="10" fill="none" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <path d="M47 41h26" stroke={CAD_LIGHT} strokeWidth="1" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  if (label.includes("fridge")) {
+    return (
+      <CadSymbolSvg>
+        <rect x="37" y="6" width="46" height="48" />
+        <path d="M37 29h46M47 16v7M47 37v7" stroke={CAD_DETAIL} strokeWidth="1.1" />
+        <path d="M83 8c11 13 11 31 0 44" fill="none" stroke={CAD_LIGHT} strokeWidth="1" strokeDasharray="3 3" />
+        <DimensionTicks />
+      </CadSymbolSvg>
+    );
+  }
+
+  return null;
+}
 
 function ToolIcon({ name, className = "h-4 w-4" }) {
   const shared = {
@@ -610,6 +802,41 @@ export default function FloorplanGenerator({
     };
   };
 
+  const snapSizeToTargets = (type, id, itemX, itemY, width, height) => {
+    const minSize = getMinSize(type);
+    const maxWidth = CANVAS_WIDTH - itemX;
+    const maxHeight = CANVAS_HEIGHT - itemY;
+    let nextW = clamp(Math.round(width), minSize.w, maxWidth);
+    let nextH = clamp(Math.round(height), minSize.h, maxHeight);
+    const targets = getSnapTargets(type, id);
+    const rightEdge = itemX + nextW;
+    const bottomEdge = itemY + nextH;
+
+    targets.forEach((target) => {
+      const rightDeltas = [
+        Math.abs(rightEdge - target.left),
+        Math.abs(rightEdge - target.right),
+      ];
+      const minRightDelta = Math.min(...rightDeltas);
+      if (minRightDelta <= SNAP_DISTANCE) {
+        const snapTo = rightDeltas[0] <= rightDeltas[1] ? target.left : target.right;
+        nextW = clamp(Math.round(snapTo - itemX), minSize.w, maxWidth);
+      }
+
+      const bottomDeltas = [
+        Math.abs(bottomEdge - target.top),
+        Math.abs(bottomEdge - target.bottom),
+      ];
+      const minBottomDelta = Math.min(...bottomDeltas);
+      if (minBottomDelta <= SNAP_DISTANCE) {
+        const snapTo = bottomDeltas[0] <= bottomDeltas[1] ? target.top : target.bottom;
+        nextH = clamp(Math.round(snapTo - itemY), minSize.h, maxHeight);
+      }
+    });
+
+    return { w: nextW, h: nextH };
+  };
+
   const cloneLayout = (value) => JSON.parse(JSON.stringify(value));
 
   const commitLayout = (next, { recordUndo = true } = {}) => {
@@ -720,10 +947,11 @@ export default function FloorplanGenerator({
         id,
         x: 30,
         y: 30,
-        w: 60,
-        h: 60,
+        w: 96,
+        h: 34,
         label: "Stairs",
         angle: 0,
+        direction: "up",
       },
     };
 
@@ -789,7 +1017,7 @@ export default function FloorplanGenerator({
         item.label.includes("Toilet") ? "toilet" :
         item.label.includes("Sink") ? "sink" :
         item.label.includes("Bath") || item.label.includes("Shower") ? "bath" :
-        item.label.includes("Cabinet") || item.label.includes("Wardrobe") || item.label.includes("Cupboard") ? "cabinet" :
+        item.label.includes("Storage") || item.label.includes("Cabinet") || item.label.includes("Wardrobe") || item.label.includes("Cupboard") ? "cabinet" :
         item.label.includes("Oven") || item.label.includes("Hob") ? "oven" :
         item.label.includes("Fridge") ? "fridge" :
         "room",
@@ -870,15 +1098,23 @@ export default function FloorplanGenerator({
       return;
     }
 
+    if (key === "angle") {
+      updateSelected({ angle: clamp(parsed, -180, 180) });
+      return;
+    }
+
+    const nextSize = snapSizeToTargets(
+      selected.type,
+      selected.id,
+      selectedItem.x,
+      selectedItem.y,
+      key === "w" ? parsed : selectedItem.w,
+      key === "h" ? parsed : selectedItem.h
+    );
+
     updateSelected({
-      [key]:
-        key === "angle"
-          ? clamp(parsed, -180, 180)
-          : clamp(
-              Math.round(parsed),
-              key === "w" ? getMinSize(selected.type).w : getMinSize(selected.type).h,
-              800
-            ),
+      w: nextSize.w,
+      h: nextSize.h,
     });
   };
 
@@ -1054,39 +1290,16 @@ export default function FloorplanGenerator({
       return;
     }
 
-    const minSize = getMinSize(dragging.type);
     const deltaX = point.x - dragging.startX;
     const deltaY = point.y - dragging.startY;
-    const maxWidth = CANVAS_WIDTH - dragging.itemX;
-    const maxHeight = CANVAS_HEIGHT - dragging.itemY;
-    let nextW = clamp(Math.round(dragging.startW + deltaX), minSize.w, maxWidth);
-    let nextH = clamp(Math.round(dragging.startH + deltaY), minSize.h, maxHeight);
-
-    const targets = getSnapTargets(dragging.type, dragging.id);
-    const rightEdge = dragging.itemX + nextW;
-    const bottomEdge = dragging.itemY + nextH;
-
-    targets.forEach((target) => {
-      const rightDeltas = [
-        Math.abs(rightEdge - target.left),
-        Math.abs(rightEdge - target.right),
-      ];
-      const minRightDelta = Math.min(...rightDeltas);
-      if (minRightDelta <= SNAP_DISTANCE) {
-        const snapTo = rightDeltas[0] <= rightDeltas[1] ? target.left : target.right;
-        nextW = clamp(Math.round(snapTo - dragging.itemX), minSize.w, maxWidth);
-      }
-
-      const bottomDeltas = [
-        Math.abs(bottomEdge - target.top),
-        Math.abs(bottomEdge - target.bottom),
-      ];
-      const minBottomDelta = Math.min(...bottomDeltas);
-      if (minBottomDelta <= SNAP_DISTANCE) {
-        const snapTo = bottomDeltas[0] <= bottomDeltas[1] ? target.top : target.bottom;
-        nextH = clamp(Math.round(snapTo - dragging.itemY), minSize.h, maxHeight);
-      }
-    });
+    const { w: nextW, h: nextH } = snapSizeToTargets(
+      dragging.type,
+      dragging.id,
+      dragging.itemX,
+      dragging.itemY,
+      dragging.startW + deltaX,
+      dragging.startH + deltaY
+    );
 
     updateItemSize(dragging.type, dragging.id, nextW, nextH);
   };
@@ -1180,90 +1393,7 @@ export default function FloorplanGenerator({
 
   const renderSpaceSymbol = (item) => {
     const label = String(item.label || "").toLowerCase();
-
-    if (label.includes("bed")) {
-      return (
-        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
-          <rect x="10" y="10" width="100" height="40" fill="#fff" stroke="#333" strokeWidth="2" />
-          <rect x="14" y="14" width="26" height="14" fill="#f4f4f5" stroke="#555" strokeWidth="1.2" />
-        </svg>
-      );
-    }
-    if (label.includes("sofa")) {
-      return (
-        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
-          <rect x="18" y="20" width="84" height="24" rx="3" fill="#fff" stroke="#333" strokeWidth="2" />
-          <rect x="10" y="22" width="10" height="20" fill="#fff" stroke="#333" strokeWidth="2" />
-          <rect x="100" y="22" width="10" height="20" fill="#fff" stroke="#333" strokeWidth="2" />
-        </svg>
-      );
-    }
-    if (label.includes("table")) {
-      return (
-        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
-          <rect x="26" y="12" width="68" height="36" fill="#fff" stroke="#333" strokeWidth="2" />
-        </svg>
-      );
-    }
-    if (label.includes("chair")) {
-      return (
-        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
-          <rect x="42" y="18" width="36" height="24" fill="#fff" stroke="#333" strokeWidth="2" />
-          <line x1="46" y1="42" x2="46" y2="52" stroke="#333" strokeWidth="2" />
-          <line x1="74" y1="42" x2="74" y2="52" stroke="#333" strokeWidth="2" />
-        </svg>
-      );
-    }
-    if (label.includes("toilet")) {
-      return (
-        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
-          <rect x="44" y="8" width="32" height="16" fill="#fff" stroke="#333" strokeWidth="2" />
-          <ellipse cx="60" cy="38" rx="20" ry="14" fill="#fff" stroke="#333" strokeWidth="2" />
-        </svg>
-      );
-    }
-    if (label.includes("bath") || label.includes("shower")) {
-      return (
-        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
-          <rect x="12" y="12" width="96" height="36" rx="8" fill="#fff" stroke="#333" strokeWidth="2" />
-        </svg>
-      );
-    }
-    if (label.includes("sink")) {
-      return (
-        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
-          <rect x="34" y="12" width="52" height="36" fill="#fff" stroke="#333" strokeWidth="2" />
-          <circle cx="60" cy="30" r="8" fill="none" stroke="#333" strokeWidth="1.4" />
-        </svg>
-      );
-    }
-    if (label.includes("cabinet") || label.includes("wardrobe") || label.includes("cupboard")) {
-      return (
-        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
-          <rect x="10" y="10" width="100" height="40" fill="#fff" stroke="#333" strokeWidth="2" />
-          <line x1="60" y1="10" x2="60" y2="50" stroke="#333" strokeWidth="1.2" />
-        </svg>
-      );
-    }
-    if (label.includes("oven") || label.includes("hob")) {
-      return (
-        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
-          <rect x="20" y="10" width="80" height="40" fill="#fff" stroke="#333" strokeWidth="2" />
-          <circle cx="46" cy="24" r="4" fill="none" stroke="#333" strokeWidth="1.2" />
-          <circle cx="74" cy="24" r="4" fill="none" stroke="#333" strokeWidth="1.2" />
-          <rect x="40" y="32" width="40" height="12" fill="none" stroke="#333" strokeWidth="1.2" />
-        </svg>
-      );
-    }
-    if (label.includes("fridge")) {
-      return (
-        <svg viewBox="0 0 120 60" className="pointer-events-none absolute inset-0 h-full w-full">
-          <rect x="38" y="8" width="44" height="44" fill="#fff" stroke="#333" strokeWidth="2" />
-          <line x1="38" y1="30" x2="82" y2="30" stroke="#333" strokeWidth="1.2" />
-        </svg>
-      );
-    }
-    return null;
+    return renderCadSpaceSymbol(label);
   };
 
   const hasSpaceSymbol = (item) => Boolean(renderSpaceSymbol(item));
@@ -1274,7 +1404,7 @@ export default function FloorplanGenerator({
       type="button"
       onClick={() => setSelected({ type: "rooms", id: room.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "rooms", room)}
-      className={`absolute box-border select-none rounded-md border-black bg-white px-2 py-1 text-center text-[11px] font-semibold text-zinc-800 transition ${
+      className={`absolute box-border select-none rounded-none border-black bg-white px-2 py-1 text-center text-[11px] font-semibold text-zinc-800 transition ${
         selected?.floorId === activeFloor.id && selected?.type === "rooms" && selected?.id === room.id
           ? selectedStyle
           : ""
@@ -1282,6 +1412,9 @@ export default function FloorplanGenerator({
       style={{
         ...getItemStyle(room),
         borderWidth: `${wallBorderWidth}px`,
+        backgroundImage:
+          "linear-gradient(45deg, rgba(24, 24, 27, 0.035) 25%, transparent 25%, transparent 50%, rgba(24, 24, 27, 0.035) 50%, rgba(24, 24, 27, 0.035) 75%, transparent 75%, transparent)",
+        backgroundSize: "10px 10px",
         userSelect: "none",
         WebkitUserSelect: "none",
         WebkitTouchCallout: "none",
@@ -1311,54 +1444,66 @@ export default function FloorplanGenerator({
       title={door.label || "Door"}
     >
       <svg
-        viewBox={`0 0 ${Math.max(door.w, 24)} ${Math.max(door.h, 20)}`}
+        viewBox={`0 0 ${Math.max(door.w, 24)} ${Math.max(door.h, 22)}`}
         className="pointer-events-none h-full w-full"
+        preserveAspectRatio="none"
       >
         <rect
           x="4"
-          y={Math.max(door.h, 20) - 8}
+          y={Math.max(door.h, 22) - 8}
           width={Math.max(door.w, 24) - 8}
           height="8"
           fill="#ffffff"
         />
         <rect
           x="1"
-          y={Math.max(door.h, 20) - 7}
+          y={Math.max(door.h, 22) - 7}
           width="5"
           height="7"
           fill="#111"
         />
         <rect
           x={Math.max(door.w, 24) - 6}
-          y={Math.max(door.h, 20) - 7}
+          y={Math.max(door.h, 22) - 7}
           width="5"
           height="7"
           fill="#111"
         />
         <line
+          x1="4"
+          y1={Math.max(door.h, 22) - 8}
+          x2={Math.max(door.w, 24) - 4}
+          y2={Math.max(door.h, 22) - 8}
+          stroke="#18181b"
+          strokeWidth="1.4"
+          vectorEffect="non-scaling-stroke"
+        />
+        <line
           x1={door.flip ? Math.max(door.w, 24) - 2 : 2}
-          y1={Math.max(door.h, 20) - 2}
+          y1={Math.max(door.h, 22) - 2}
           x2={door.flip ? 2 : Math.max(door.w, 24) - 2}
           y2="4"
-          stroke="#222"
-          strokeWidth="1.4"
+          stroke="#18181b"
+          strokeWidth="1.8"
+          vectorEffect="non-scaling-stroke"
         />
         <path
           d={
             door.flip
-              ? `M ${Math.max(door.w, 24) - 2} ${Math.max(door.h, 20) - 2} A ${Math.max(door.w, 24) - 4} ${Math.max(
+              ? `M ${Math.max(door.w, 24) - 2} ${Math.max(door.h, 22) - 2} A ${Math.max(door.w, 24) - 4} ${Math.max(
                   door.h,
-                  20
+                  22
                 ) - 6} 0 0 0 2 4`
-              : `M 2 ${Math.max(door.h, 20) - 2} A ${Math.max(door.w, 24) - 4} ${Math.max(
+              : `M 2 ${Math.max(door.h, 22) - 2} A ${Math.max(door.w, 24) - 4} ${Math.max(
                   door.h,
-                  20
+                  22
                 ) - 6} 0 0 1 ${Math.max(door.w, 24) - 2} 4`
           }
           fill="none"
-          stroke="#666"
+          stroke="#71717a"
           strokeDasharray="2 2"
           strokeWidth="1.2"
+          vectorEffect="non-scaling-stroke"
         />
       </svg>
       {renderResizeHandle("doors", door)}
@@ -1374,7 +1519,7 @@ export default function FloorplanGenerator({
         setSelected({ type: "windows", id: windowItem.id, floorId: activeFloor.id })
       }
       onPointerDown={(event) => startMoveDrag(event, "windows", windowItem)}
-      className={`absolute box-border select-none rounded-[1px] border-[3px] border-black bg-white ${
+      className={`absolute box-border select-none rounded-none border-[3px] border-black bg-white ${
         selected?.floorId === activeFloor.id &&
         selected?.type === "windows" &&
         selected?.id === windowItem.id
@@ -1386,6 +1531,7 @@ export default function FloorplanGenerator({
     >
       <span className="pointer-events-none absolute inset-y-[1px] left-[33%] w-px bg-black" />
       <span className="pointer-events-none absolute inset-y-[1px] left-[66%] w-px bg-black" />
+      <span className="pointer-events-none absolute left-1 right-1 top-1/2 h-px -translate-y-1/2 bg-zinc-500" />
       {renderResizeHandle("windows", windowItem)}
       {renderRotateHandle("windows", windowItem)}
     </button>
@@ -1397,11 +1543,11 @@ export default function FloorplanGenerator({
       type="button"
       onClick={() => setSelected({ type: "spaces", id: item.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "spaces", item)}
-      className={`absolute box-border select-none rounded ${
+      className={`absolute box-border select-none rounded-none ${
         hasSpaceSymbol(item)
-          ? "border-2 border-zinc-700 bg-white"
+          ? "border-2 border-zinc-800 bg-white"
           : "border border-dashed border-zinc-500 bg-zinc-100/80"
-      } text-[10px] font-semibold text-zinc-700 ${
+      } text-[9px] font-semibold uppercase tracking-normal text-zinc-700 ${
         selected?.floorId === activeFloor.id && selected?.type === "spaces" && selected?.id === item.id
           ? selectedStyle
           : ""
@@ -1409,7 +1555,7 @@ export default function FloorplanGenerator({
       style={{ ...getItemStyle(item), userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
     >
       {renderSpaceSymbol(item)}
-      <span className="absolute bottom-0.5 left-0 right-0 block truncate px-1 text-center">
+      <span className="absolute bottom-0.5 left-0 right-0 block truncate bg-white/85 px-1 text-center">
         {item.label || "Space"}
       </span>
       {renderResizeHandle("spaces", item)}
@@ -1417,13 +1563,19 @@ export default function FloorplanGenerator({
     </button>
   );
 
-  const renderStairs = (item) => (
+  const renderStairs = (item) => {
+    const isDown = String(item.direction || "").toLowerCase() === "down";
+    const arrowStart = isDown ? 78 : 20;
+    const arrowEnd = isDown ? 20 : 78;
+    const arrowHeadA = isDown ? "M28 42l-10 8 10 8" : "M70 42l10 8-10 8";
+
+    return (
     <button
       key={item.id}
       type="button"
       onClick={() => setSelected({ type: "stairs", id: item.id, floorId: activeFloor.id })}
       onPointerDown={(event) => startMoveDrag(event, "stairs", item)}
-      className={`absolute box-border select-none rounded border border-zinc-700 bg-white text-[10px] font-semibold text-zinc-800 ${
+      className={`absolute box-border select-none rounded-none border-2 border-zinc-800 bg-white text-[9px] font-semibold uppercase tracking-normal text-zinc-800 ${
         selected?.floorId === activeFloor.id && selected?.type === "stairs" && selected?.id === item.id
           ? selectedStyle
           : ""
@@ -1431,23 +1583,30 @@ export default function FloorplanGenerator({
       style={{ ...getItemStyle(item), userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
       title={item.label || "Stairs"}
     >
-      <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 h-full w-full">
-        {[12, 28, 44, 60, 76].map((stepX, index) => (
-          <path
+      <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="none">
+        <rect x="8" y="12" width="84" height="76" fill="#fff" stroke="#111" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        {[18, 28, 38, 48, 58, 68, 78].map((stepX) => (
+          <line
             key={`step-${item.id}-${stepX}`}
-            d={`M ${stepX} 82 L ${stepX} ${20 + index * 10} L ${stepX + 12} ${20 + index * 10}`}
-            fill="none"
-            stroke="#111"
-            strokeWidth="4"
-            strokeLinecap="round"
+            x1={stepX}
+            y1="12"
+            x2={stepX}
+            y2="88"
+            stroke="#52525b"
+            strokeWidth="1.4"
+            vectorEffect="non-scaling-stroke"
           />
         ))}
+        <line x1={arrowStart} y1="50" x2={arrowEnd} y2="50" stroke="#111" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
+        <path d={arrowHeadA} fill="none" stroke="#111" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
+        <text x={isDown ? "64" : "18"} y="42" fontSize="13" fontWeight="700" fill="#111">{isDown ? "DN" : "UP"}</text>
       </svg>
-      <span className="absolute bottom-1 left-0 right-0 block truncate px-1 text-center">{item.label || "Stairs"}</span>
+      <span className="absolute bottom-1 left-0 right-0 block truncate bg-white/85 px-1 text-center">{item.label || "Stairs"}</span>
       {renderResizeHandle("stairs", item)}
       {renderRotateHandle("stairs", item)}
     </button>
-  );
+    );
+  };
 
   const renderDrawingCanvas = ({ preview = false, className = "", floor = activeFloor } = {}) => {
     const scale = preview ? Math.min(0.74, effectiveZoom) : effectiveZoom;
@@ -1488,6 +1647,9 @@ export default function FloorplanGenerator({
                 width: CANVAS_WIDTH,
                 height: CANVAS_HEIGHT,
                 transform: `scale(${scale})`,
+                backgroundImage:
+                  "linear-gradient(rgba(24, 24, 27, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(24, 24, 27, 0.08) 1px, transparent 1px), linear-gradient(rgba(24, 24, 27, 0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(24, 24, 27, 0.14) 1px, transparent 1px)",
+                backgroundSize: "10px 10px, 10px 10px, 40px 40px, 40px 40px",
                 touchAction: preview ? "auto" : dragging ? "none" : "pan-y pinch-zoom",
                 userSelect: "none",
                 WebkitUserSelect: "none",
@@ -1869,6 +2031,24 @@ export default function FloorplanGenerator({
                           >
                             {selectedItem.flip ? "Flip Door Back" : "Flip Door Opening"}
                           </button>
+                        ) : null}
+                        {selected?.type === "stairs" ? (
+                          <div className="col-span-3 grid grid-cols-2 gap-2">
+                            {["up", "down"].map((direction) => (
+                              <button
+                                key={`stairs-direction-${direction}`}
+                                type="button"
+                                onClick={() => updateSelected({ direction })}
+                                className={`h-10 rounded-xl border px-3 text-sm font-semibold ${
+                                  (selectedItem.direction || "up") === direction
+                                    ? "border-zinc-900 bg-zinc-900 text-white"
+                                    : "border-zinc-300 bg-zinc-50 text-zinc-700"
+                                }`}
+                              >
+                                {direction === "up" ? "UP" : "DOWN"}
+                              </button>
+                            ))}
+                          </div>
                         ) : null}
                       </div>
                     )}

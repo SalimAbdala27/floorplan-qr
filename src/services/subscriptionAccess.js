@@ -19,6 +19,22 @@ export function hasActiveSubscription(subscription) {
   return ACTIVE_SUBSCRIPTION_STATUSES.has(String(subscription?.status || "").toLowerCase());
 }
 
+export function formatSubscriptionDate(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function getSubscriptionEndLabel(subscription) {
+  if (!subscription?.cancelAtPeriodEnd) return null;
+  return formatSubscriptionDate(subscription.currentPeriodEnd);
+}
+
 export async function fetchSubscriptionRecord(userId) {
   if (!userId) {
     return normalizeSubscriptionRecord(null);

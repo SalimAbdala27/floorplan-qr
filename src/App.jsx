@@ -18,6 +18,7 @@ import {
 } from "./services/billingService.js";
 import {
   fetchSubscriptionRecord,
+  getSubscriptionEndLabel,
   hasActiveSubscription,
   normalizeSubscriptionRecord,
 } from "./services/subscriptionAccess.js";
@@ -29,6 +30,8 @@ import {
 
 const STORAGE_KEY_PREFIX = "floorplan_qr_state_v3";
 const FLOORPLAN_PIXELS_PER_METER = 40;
+const FLOORPLAN_CANVAS_WIDTH = 420;
+const FLOORPLAN_CANVAS_HEIGHT = 640;
 const DEFAULT_WALL_THICKNESS_METERS = 0.2;
 const PDF_THEME_PRESETS = {
   light: {
@@ -112,17 +115,35 @@ function createServiceCheckEntry(recorded = false) {
     testedAt: null,
     pointLocation: "",
     notes: "",
+    photos: [],
   };
+}
+
+function normalizeServicePhotos(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((photo) => photo?.url || photo?.dataUrl)
+    .map((photo, index) => ({
+      id: photo?.id || `service_photo_${Date.now()}_${index}`,
+      url: photo?.url || photo?.dataUrl,
+      fileName: String(photo?.fileName || `Photo ${index + 1}`),
+      uploadedAt:
+        typeof photo?.uploadedAt === "string" && photo.uploadedAt
+          ? photo.uploadedAt
+          : new Date().toISOString(),
+    }));
 }
 
 function normalizeServiceCheckEntry(value) {
   if (typeof value === "boolean") return createServiceCheckEntry(value);
+  const photos = normalizeServicePhotos(value?.photos);
   return {
-    recorded: Boolean(value?.recorded || value?.worksAt || value?.testedAt),
+    recorded: Boolean(value?.recorded || value?.worksAt || value?.testedAt || photos.length),
     worksAt: typeof value?.worksAt === "string" && value.worksAt ? value.worksAt : null,
     testedAt: typeof value?.testedAt === "string" && value.testedAt ? value.testedAt : null,
     pointLocation: typeof value?.pointLocation === "string" ? value.pointLocation : "",
     notes: typeof value?.notes === "string" ? value.notes : "",
+    photos,
   };
 }
 
@@ -1069,6 +1090,7 @@ function HomeScreen({
   );
   const brochureHeroImage = useMemo(() => getBrochureHeroImage({ ...home, marketingBrochure }), [home, marketingBrochure]);
   const inventoryBrochureMedia = useMemo(() => getInventoryBrochureMedia(home), [home]);
+  const subscriptionEndLabel = getSubscriptionEndLabel(subscription);
   const selectedBrochureImages = useMemo(() => {
     const uploaded = (marketingBrochure.galleryImages || []).map((image) => ({
       id: image.id,
@@ -1641,6 +1663,57 @@ function HomeScreen({
     }));
   };
 
+  const onServicePhotoSelected = async (field, roomId, event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    try {
+      const uploadedPhotos = await Promise.all(
+        files.map(async (file, index) => ({
+          id: `service_photo_${Date.now()}_${index}`,
+          url: await compressImageFileToDataUrl(file),
+          fileName: file.name || `Photo ${index + 1}`,
+          uploadedAt: new Date().toISOString(),
+        }))
+      );
+
+      updateHome((prev) => {
+        const existing = normalizeServiceCheckEntry(prev[field]?.[roomId]);
+        return {
+          ...prev,
+          [field]: {
+            ...prev[field],
+            [roomId]: {
+              ...existing,
+              recorded: true,
+              photos: [...existing.photos, ...uploadedPhotos],
+            },
+          },
+        };
+      });
+    } catch {
+      // no-op; keep flow simple for now
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const removeServicePhoto = (field, roomId, photoId) => {
+    updateHome((prev) => {
+      const existing = normalizeServiceCheckEntry(prev[field]?.[roomId]);
+      return {
+        ...prev,
+        [field]: {
+          ...prev[field],
+          [roomId]: {
+            ...existing,
+            photos: existing.photos.filter((photo) => photo.id !== photoId),
+          },
+        },
+      };
+    });
+  };
+
   const regenerateRoomsFromPreset = () => {
     const nextPreset = getPresetByKey(generatorPresetKey);
     const nextRooms = buildRoomsFromPreset(nextPreset.key);
@@ -1972,14 +2045,15 @@ function HomeScreen({
         ...(floor.spaces || []),
         ...(floor.stairs || []),
       ];
-      const maxX = Math.max(760, ...allItems.map((item) => (item.x || 0) + (item.w || 0)));
-      const maxY = Math.max(520, ...allItems.map((item) => (item.y || 0) + (item.h || 0)));
+      const maxX = Math.max(FLOORPLAN_CANVAS_WIDTH, ...allItems.map((item) => (item.x || 0) + (item.w || 0)));
+      const maxY = Math.max(FLOORPLAN_CANVAS_HEIGHT, ...allItems.map((item) => (item.y || 0) + (item.h || 0)));
       const scale = Math.min(drawWidth / maxX, drawHeight / maxY);
       const offsetX = drawX + (drawWidth - maxX * scale) / 2;
       const offsetY = drawY + (drawHeight - maxY * scale) / 2;
       const sx = (value) => offsetX + value * scale;
       const sy = (value) => offsetY + value * scale;
       const sw = (value) => value * scale;
+      const sh = (value) => value * scale;
 
       doc.addPage();
       drawSectionHeader("Floorplan", floor.name);
@@ -2008,7 +2082,7 @@ function HomeScreen({
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(...primaryRgb);
         doc.setLineWidth(0.8);
-        doc.rect(sx(room.x), sy(room.y), sw(room.w), sw(room.h), "FD");
+        doc.rect(sx(room.x), sy(room.y), sw(room.w), sh(room.h), "FD");
         doc.setTextColor(40, 40, 40);
         doc.setFontSize(8);
         doc.text(
@@ -2022,7 +2096,7 @@ function HomeScreen({
       (floor.windows || []).forEach((windowItem) => {
         doc.setDrawColor(80, 80, 80);
         doc.setLineWidth(0.8);
-        doc.rect(sx(windowItem.x), sy(windowItem.y), sw(windowItem.w), sw(windowItem.h));
+        doc.rect(sx(windowItem.x), sy(windowItem.y), sw(windowItem.w), sh(windowItem.h));
       });
 
       (floor.doors || []).forEach((door) => {
@@ -2034,24 +2108,43 @@ function HomeScreen({
       (floor.spaces || []).forEach((space) => {
         doc.setDrawColor(120, 120, 120);
         doc.setLineWidth(0.35);
-        doc.rect(sx(space.x), sy(space.y), sw(space.w), sw(space.h));
+        doc.rect(sx(space.x), sy(space.y), sw(space.w), sh(space.h));
         doc.setTextColor(80, 80, 80);
         doc.setFontSize(6.8);
-        doc.text(String(space.label || "Item"), sx(space.x) + 1.5, sy(space.y) + Math.min(4, sw(space.h) - 1), {
+        doc.text(String(space.label || "Item"), sx(space.x) + 1.5, sy(space.y) + Math.min(4, sh(space.h) - 1), {
           maxWidth: Math.max(8, sw(space.w) - 3),
         });
       });
 
       (floor.stairs || []).forEach((stairsItem) => {
-        doc.setFillColor(...accentSoftRgb);
-        doc.setDrawColor(90, 90, 90);
+        const x = sx(stairsItem.x);
+        const y = sy(stairsItem.y);
+        const w = Math.max(10, sw(stairsItem.w));
+        const h = Math.max(10, sh(stairsItem.h));
+        const isDown = String(stairsItem.direction || "").toLowerCase() === "down";
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(20, 20, 20);
         doc.setLineWidth(0.6);
-        doc.rect(sx(stairsItem.x), sy(stairsItem.y), sw(stairsItem.w), sw(stairsItem.h), "FD");
-        doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-        doc.setFontSize(7);
-        doc.text(String(stairsItem.label || "Stairs"), sx(stairsItem.x) + 2, sy(stairsItem.y) + 5, {
-          maxWidth: Math.max(8, sw(stairsItem.w) - 4),
-        });
+        doc.rect(x, y, w, h, "FD");
+        doc.setDrawColor(82, 82, 91);
+        doc.setLineWidth(0.35);
+        const treadCount = Math.max(4, Math.min(11, Math.floor(w / 4)));
+        for (let i = 1; i < treadCount; i += 1) {
+          const treadX = x + (w * i) / treadCount;
+          doc.line(treadX, y, treadX, y + h);
+        }
+        doc.setDrawColor(20, 20, 20);
+        doc.setLineWidth(0.55);
+        const arrowY = y + h / 2;
+        const arrowStartX = x + w * (isDown ? 0.82 : 0.18);
+        const arrowEndX = x + w * (isDown ? 0.18 : 0.82);
+        const headBackX = x + w * (isDown ? 0.28 : 0.72);
+        doc.line(arrowStartX, arrowY, arrowEndX, arrowY);
+        doc.line(arrowEndX, arrowY, headBackX, arrowY - h * 0.12);
+        doc.line(arrowEndX, arrowY, headBackX, arrowY + h * 0.12);
+        doc.setTextColor(20, 20, 20);
+        doc.setFontSize(6.4);
+        doc.text(isDown ? "DN" : "UP", x + w * (isDown ? 0.68 : 0.12), y + h * 0.38);
       });
       drawFooter();
     };
@@ -2588,26 +2681,22 @@ function HomeScreen({
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 14;
-      const drawX = margin + 4;
-      const drawY = 48;
-      const drawWidth = pageWidth - (margin * 2) - 8;
-      const drawHeight = pageHeight - drawY - margin - 18;
+      const drawX = margin + 6;
+      const drawY = 42;
+      const drawWidth = pageWidth - (margin * 2) - 12;
+      const drawHeight = pageHeight - drawY - margin - 20;
       const wallThicknessMeters = normalizeWallThickness(home.floorplanLayout?.wallThicknessMeters);
-      const wallStrokeWidth = Math.max(0.6, Math.min(3.2, wallThicknessMeters * 7));
+      const wallStrokeWidth = Math.max(1.4, Math.min(4.2, wallThicknessMeters * 11));
 
-      drawEditorialBackdrop(doc, theme, accentRgb);
-      doc.setFillColor(...theme.sectionBarRgb);
-      doc.rect(0, 0, 210, 16, "F");
+      doc.setFillColor(255, 255, 255);
+      doc.rect(0, 0, pageWidth, pageHeight, "F");
       if (brandImage.dataUrl) {
         if (isHeaderBanner) {
-          drawBrandImage(54, 2.5, 102, 11, "center");
+          drawBrandImage(54, 6, 102, 12, "center");
         } else {
-          drawBrandImage(14, 5, 18, 8, "left");
+          drawBrandImage(14, 8, 20, 9, "left");
         }
       }
-
-      doc.setFillColor(...theme.floorplanPanelRgb);
-      doc.roundedRect(14, 24, 182, 246, 10, 10, "F");
 
       const allItems = [
         ...(floor.rooms || []),
@@ -2616,14 +2705,15 @@ function HomeScreen({
         ...(floor.spaces || []),
         ...(floor.stairs || []),
       ];
-      const maxX = Math.max(760, ...allItems.map((item) => (item.x || 0) + (item.w || 0)));
-      const maxY = Math.max(520, ...allItems.map((item) => (item.y || 0) + (item.h || 0)));
+      const maxX = Math.max(FLOORPLAN_CANVAS_WIDTH, ...allItems.map((item) => (item.x || 0) + (item.w || 0)));
+      const maxY = Math.max(FLOORPLAN_CANVAS_HEIGHT, ...allItems.map((item) => (item.y || 0) + (item.h || 0)));
       const scale = Math.min(drawWidth / maxX, drawHeight / maxY);
       const offsetX = drawX + (drawWidth - maxX * scale) / 2;
       const offsetY = drawY + (drawHeight - maxY * scale) / 2;
       const sx = (value) => offsetX + value * scale;
       const sy = (value) => offsetY + value * scale;
       const sw = (value) => value * scale;
+      const sh = (value) => value * scale;
       const clampValue = (value, min, max) => Math.max(min, Math.min(max, value));
       const toRadians = (degrees) => (degrees * Math.PI) / 180;
       const rotatePoint = (x, y, cx, cy, degrees) => {
@@ -2681,18 +2771,39 @@ function HomeScreen({
         const label = String(space?.label || "Space").toLowerCase();
         if (label.includes("toilet")) return "WC";
         if (label.includes("bath / shower")) return "Bath/Shower";
-        if (label.includes("bathroom sink")) return "Sink";
+        if (label.includes("kitchen sink")) return "Kitchen Sink";
+        if (label.includes("bathroom sink") || label.includes("basin")) return "Bathroom Sink";
         if (label.includes("sink")) return "Sink";
         if (label.includes("fridge")) return "Fridge";
         if (label.includes("oven") || label.includes("hob")) return "Oven/Hob";
-        if (label.includes("cabinet")) return "Cabinets";
-        if (label.includes("wardrobe")) return "Wardrobe";
-        if (label.includes("cupboard")) return "Cupboard";
+        if (label.includes("storage") || label.includes("cabinet") || label.includes("wardrobe") || label.includes("cupboard")) {
+          return "Storage";
+        }
         if (label.includes("bed")) return "Bed";
         if (label.includes("sofa")) return "Sofa";
         if (label.includes("table")) return "Table";
         if (label.includes("chair")) return "Chairs";
         return String(space?.label || "Space");
+      };
+      const isFixtureSpace = (space) => {
+        const label = String(space?.label || "").toLowerCase();
+        return (
+          label.includes("sink") ||
+          label.includes("toilet") ||
+          label.includes("bed") ||
+          label.includes("sofa") ||
+          label.includes("table") ||
+          label.includes("chair") ||
+          label.includes("bath") ||
+          label.includes("shower") ||
+          label.includes("storage") ||
+          label.includes("cabinet") ||
+          label.includes("wardrobe") ||
+          label.includes("cupboard") ||
+          label.includes("oven") ||
+          label.includes("hob") ||
+          label.includes("fridge")
+        );
       };
       const drawSpaceSymbol = (space, rect) => {
         const label = String(space?.label || "").toLowerCase();
@@ -2769,12 +2880,21 @@ function HomeScreen({
           }
           return;
         }
-        if (label.includes("sink")) {
-          drawRect(x + w * 0.2, y + h * 0.2, w * 0.6, h * 0.6, 0.55);
-          drawCircle(x + w * 0.5, y + h * 0.5, Math.max(2, Math.min(w, h) * 0.16), 0.45);
+        if (label.includes("kitchen sink")) {
+          drawRect(x + w * 0.06, y + h * 0.16, w * 0.88, h * 0.68, 0.55);
+          drawCircle(x + w * 0.38, y + h * 0.54, Math.max(1.5, Math.min(w, h) * 0.16), 0.45);
+          drawCircle(x + w * 0.64, y + h * 0.54, Math.max(1.5, Math.min(w, h) * 0.16), 0.45);
+          drawLine(x + w * 0.5, y + h * 0.25, x + w * 0.5, y + h * 0.38, 0.35);
+          drawLine(x + w * 0.43, y + h * 0.25, x + w * 0.57, y + h * 0.25, 0.35);
           return;
         }
-        if (label.includes("cabinet") || label.includes("wardrobe") || label.includes("cupboard")) {
+        if (label.includes("bathroom sink") || label.includes("basin") || label.includes("sink")) {
+          drawRect(x + w * 0.18, y + h * 0.16, w * 0.64, h * 0.68, 0.55);
+          drawCircle(x + w * 0.5, y + h * 0.54, Math.max(1.5, Math.min(w, h) * 0.16), 0.45);
+          drawLine(x + w * 0.44, y + h * 0.28, x + w * 0.56, y + h * 0.28, 0.35);
+          return;
+        }
+        if (label.includes("storage") || label.includes("cabinet") || label.includes("wardrobe") || label.includes("cupboard")) {
           drawRect(x + 1, y + 1, w - 2, h - 2, 0.55);
           drawLine(x + w * 0.5, y + 2, x + w * 0.5, y + h - 2, 0.45);
           return;
@@ -2805,18 +2925,18 @@ function HomeScreen({
         { minX: Infinity, minY: Infinity, maxX: 0, maxY: 0 }
       );
 
-      doc.setFontSize(8);
-      doc.setTextColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-      doc.text("FLOORPLAN", 18, 34);
-      doc.setFontSize(18);
-      doc.setTextColor(...theme.titleTextRgb);
-      doc.text(floor.name, 18, 42);
-      doc.setDrawColor(...theme.footerLineRgb);
-      doc.setLineWidth(0.35);
+      doc.setFontSize(7.5);
+      doc.setTextColor(70, 70, 70);
+      doc.text("FLOORPLAN", 18, 24);
+      doc.setFontSize(15);
+      doc.setTextColor(10, 10, 10);
+      doc.text(String(floor.name || "Floor"), 18, 32);
+      doc.setDrawColor(205, 205, 205);
+      doc.setLineWidth(0.25);
       doc.rect(drawX, drawY, drawWidth, drawHeight);
 
-      doc.setDrawColor(...theme.floorplanGridRgb);
-      doc.setLineWidth(0.2);
+      doc.setDrawColor(235, 235, 235);
+      doc.setLineWidth(0.12);
       for (let gx = 0; gx <= maxX; gx += 40) {
         doc.line(sx(gx), drawY, sx(gx), drawY + drawHeight);
       }
@@ -2828,24 +2948,34 @@ function HomeScreen({
         const roomWidthMeters = pixelsToMeters(room.w, 4);
         const roomHeightMeters = pixelsToMeters(room.h, 3);
         doc.setFillColor(255, 255, 255);
-        doc.setDrawColor(0, 0, 0);
+        doc.setDrawColor(118, 118, 118);
         doc.setLineWidth(wallStrokeWidth);
-        doc.rect(sx(room.x), sy(room.y), sw(room.w), sw(room.h), "FD");
-        doc.setTextColor(30, 30, 30);
-        doc.setFontSize(8);
-        doc.text(
-          `${String(room.name || "Room")} (${roomWidthMeters}m x ${roomHeightMeters}m)`,
-          sx(room.x) + 2,
-          sy(room.y) + 4,
-          { maxWidth: Math.max(10, sw(room.w) - 4) }
-        );
+        doc.rect(sx(room.x), sy(room.y), sw(room.w), sh(room.h), "FD");
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.42);
+        doc.rect(sx(room.x), sy(room.y), sw(room.w), sh(room.h), "S");
+
+        const roomCenterX = sx(room.x) + sw(room.w) / 2;
+        const roomCenterY = sy(room.y) + sh(room.h) / 2;
+        doc.setTextColor(12, 12, 12);
+        doc.setFontSize(8.5);
+        doc.text(String(room.name || "Room").toUpperCase(), roomCenterX, roomCenterY - 3, {
+          align: "center",
+          maxWidth: Math.max(14, sw(room.w) - 6),
+        });
+        doc.setFontSize(7.5);
+        doc.setTextColor(45, 45, 45);
+        doc.text(`${roomWidthMeters}m x ${roomHeightMeters}m`, roomCenterX, roomCenterY + 4, {
+          align: "center",
+          maxWidth: Math.max(14, sw(room.w) - 6),
+        });
       });
 
       (floor.doors || []).forEach((door) => {
         const x = sx(door.x);
         const y = sy(door.y);
         const doorW = Math.max(8, sw(door.w || 24));
-        const doorH = Math.max(6, sw(door.h || 20));
+        const doorH = Math.max(6, sh(door.h || 20));
         const cx = x + doorW / 2;
         const cy = y + doorH / 2;
         const angle = door.angle || 0;
@@ -2858,7 +2988,7 @@ function HomeScreen({
 
         // White opening in wall where the door sits.
         doc.setDrawColor(255, 255, 255);
-        doc.setLineWidth(2.1);
+        doc.setLineWidth(Math.max(2.4, wallStrokeWidth + 0.7));
         doc.line(baseStart.x, baseStart.y, baseEnd.x, baseEnd.y);
 
         doc.setDrawColor(0, 0, 0);
@@ -2916,22 +3046,7 @@ function HomeScreen({
       });
 
       (floor.spaces || []).forEach((space) => {
-        const spaceLabel = String(space?.label || "").toLowerCase();
-        const hideContainer =
-          spaceLabel.includes("sink") ||
-          spaceLabel.includes("toilet") ||
-          spaceLabel.includes("bed") ||
-          spaceLabel.includes("sofa") ||
-          spaceLabel.includes("table") ||
-          spaceLabel.includes("chair") ||
-          spaceLabel.includes("bath") ||
-          spaceLabel.includes("shower") ||
-          spaceLabel.includes("cabinet") ||
-          spaceLabel.includes("wardrobe") ||
-          spaceLabel.includes("cupboard") ||
-          spaceLabel.includes("oven") ||
-          spaceLabel.includes("hob") ||
-          spaceLabel.includes("fridge");
+        const hideContainer = isFixtureSpace(space);
         const rect = hideContainer
           ? getRotatedRectFrame(space)
           : drawRotatedRect(space, {
@@ -2941,6 +3056,7 @@ function HomeScreen({
               lineWidth: 0.4,
             });
         drawSpaceSymbol(space, rect);
+        if (hideContainer) return;
         const labelText = formatSpaceLabel(space);
         const tagPadding = 1.8;
         doc.setFontSize(6.8);
@@ -2960,49 +3076,86 @@ function HomeScreen({
       (floor.stairs || []).forEach((stairsItem) => {
         const rect = drawRotatedRect(stairsItem, {
           fill: true,
-          fillColor: [220, 220, 220],
-          strokeColor: [90, 90, 90],
-          lineWidth: 0.8,
+          fillColor: [255, 255, 255],
+          strokeColor: [20, 20, 20],
+          lineWidth: 0.65,
         });
-        doc.setTextColor(80, 80, 80);
-        doc.setFontSize(7);
-        doc.text(
-          String(stairsItem.label || "Stairs"),
-          rect.cx - Math.min(18, rect.w / 2),
-          rect.cy,
-          { maxWidth: Math.max(8, rect.w - 4) }
+        const isDown = String(stairsItem.direction || "").toLowerCase() === "down";
+        const rp = (px, py) => rotatePoint(px, py, rect.cx, rect.cy, rect.angle);
+        const drawStairLine = (x1, y1, x2, y2, width = 0.35, color = [82, 82, 91]) => {
+          const a = rp(x1, y1);
+          const b = rp(x2, y2);
+          doc.setDrawColor(...color);
+          doc.setLineWidth(width);
+          doc.line(a.x, a.y, b.x, b.y);
+        };
+        const treadCount = Math.max(4, Math.min(12, Math.floor(rect.w / 4)));
+        for (let i = 1; i < treadCount; i += 1) {
+          const treadX = rect.x + (rect.w * i) / treadCount;
+          drawStairLine(treadX, rect.y, treadX, rect.y + rect.h, 0.32);
+        }
+        const arrowY = rect.y + rect.h / 2;
+        const arrowStartX = rect.x + rect.w * (isDown ? 0.82 : 0.18);
+        const arrowEndX = rect.x + rect.w * (isDown ? 0.18 : 0.82);
+        const headBackX = rect.x + rect.w * (isDown ? 0.28 : 0.72);
+        drawStairLine(arrowStartX, arrowY, arrowEndX, arrowY, 0.55, [20, 20, 20]);
+        drawStairLine(
+          arrowEndX,
+          arrowY,
+          headBackX,
+          arrowY - rect.h * 0.12,
+          0.55,
+          [20, 20, 20]
         );
+        drawStairLine(
+          arrowEndX,
+          arrowY,
+          headBackX,
+          arrowY + rect.h * 0.12,
+          0.55,
+          [20, 20, 20]
+        );
+        const labelPoint = rp(rect.x + rect.w * (isDown ? 0.68 : 0.12), rect.y + rect.h * 0.38);
+        doc.setTextColor(20, 20, 20);
+        doc.setFontSize(6.5);
+        doc.text(isDown ? "DN" : "UP", labelPoint.x, labelPoint.y);
       });
 
       if (Number.isFinite(roomBounds.minX) && roomBounds.maxX > roomBounds.minX) {
-        const dimY = sy(roomBounds.maxY) + 10;
-        doc.setDrawColor(120, 120, 120);
+        const dimY = Math.max(26, sy(roomBounds.minY) - 10);
+        doc.setDrawColor(90, 90, 90);
         doc.setLineWidth(0.35);
         doc.line(sx(roomBounds.minX), dimY, sx(roomBounds.maxX), dimY);
+        doc.line(sx(roomBounds.minX), dimY, sx(roomBounds.minX), sy(roomBounds.minY));
+        doc.line(sx(roomBounds.maxX), dimY, sx(roomBounds.maxX), sy(roomBounds.minY));
         doc.line(sx(roomBounds.minX), dimY - 2, sx(roomBounds.minX), dimY + 2);
         doc.line(sx(roomBounds.maxX), dimY - 2, sx(roomBounds.maxX), dimY + 2);
-        doc.setTextColor(90, 90, 90);
+        doc.setTextColor(20, 20, 20);
         doc.setFontSize(8);
         doc.text(
           `${Number(((roomBounds.maxX - roomBounds.minX) / FLOORPLAN_PIXELS_PER_METER).toFixed(2))}m`,
-          (sx(roomBounds.minX) + sx(roomBounds.maxX)) / 2 - 6,
-          dimY - 1
+          (sx(roomBounds.minX) + sx(roomBounds.maxX)) / 2,
+          dimY - 2,
+          { align: "center" }
         );
       }
 
       if (Number.isFinite(roomBounds.minY) && roomBounds.maxY > roomBounds.minY) {
-        const dimX = sx(roomBounds.maxX) + 8;
-        doc.setDrawColor(120, 120, 120);
+        const dimX = Math.max(8, sx(roomBounds.minX) - 10);
+        doc.setDrawColor(90, 90, 90);
         doc.setLineWidth(0.35);
         doc.line(dimX, sy(roomBounds.minY), dimX, sy(roomBounds.maxY));
+        doc.line(dimX, sy(roomBounds.minY), sx(roomBounds.minX), sy(roomBounds.minY));
+        doc.line(dimX, sy(roomBounds.maxY), sx(roomBounds.minX), sy(roomBounds.maxY));
         doc.line(dimX - 2, sy(roomBounds.minY), dimX + 2, sy(roomBounds.minY));
         doc.line(dimX - 2, sy(roomBounds.maxY), dimX + 2, sy(roomBounds.maxY));
-        doc.setTextColor(90, 90, 90);
+        doc.setTextColor(20, 20, 20);
         doc.setFontSize(8);
         doc.text(
           `${Number(((roomBounds.maxY - roomBounds.minY) / FLOORPLAN_PIXELS_PER_METER).toFixed(2))}m`,
-          dimX + 1.5,
-          (sy(roomBounds.minY) + sy(roomBounds.maxY)) / 2
+          dimX - 1.5,
+          (sy(roomBounds.minY) + sy(roomBounds.maxY)) / 2,
+          { angle: 90, align: "center" }
         );
       }
 
@@ -3344,7 +3497,9 @@ function HomeScreen({
           <div className="mx-auto w-full max-w-[23rem] md:max-w-4xl lg:max-w-5xl rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-800">Subscription</p>
             <p className="mt-1 text-xs text-emerald-700">
-              {subscription?.planName || "Paid"} plan active. PDF exports are enabled for this account.
+              {subscription?.cancelAtPeriodEnd
+                ? `${subscription?.planName || "Paid"} plan cancelled. PDF exports stay enabled until ${subscriptionEndLabel || "the current period ends"}.`
+                : `${subscription?.planName || "Paid"} plan active. PDF exports are enabled for this account.`}
             </p>
           </div>
         </div>
@@ -3427,11 +3582,20 @@ function HomeScreen({
           </p>
           <div className="mt-2 flex items-center gap-2">
             <label className="h-9 rounded-lg bg-zinc-800 px-3 text-[11px] font-semibold text-white transition hover:bg-zinc-700 flex items-center cursor-pointer">
-              Add Fusebox
+              Take Photo
               <input
                 type="file"
                 accept="image/*"
                 capture="environment"
+                className="hidden"
+                onChange={onFuseboxPhotoSelected}
+              />
+            </label>
+            <label className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-[11px] font-semibold text-zinc-700 transition hover:bg-zinc-50 flex items-center cursor-pointer">
+              Upload Image
+              <input
+                type="file"
+                accept="image/*"
                 className="hidden"
                 onChange={onFuseboxPhotoSelected}
               />
@@ -3850,7 +4014,11 @@ function HomeScreen({
                 <div
                   key={`gas-${room.id}`}
                   className={`w-full rounded-lg border px-3 py-2 text-left ${
-                    gasCheck.worksAt || gasCheck.testedAt || gasCheck.pointLocation || gasCheck.notes
+                    gasCheck.worksAt ||
+                    gasCheck.testedAt ||
+                    gasCheck.pointLocation ||
+                    gasCheck.notes ||
+                    gasCheck.photos.length
                       ? "border-emerald-300 bg-emerald-50"
                       : "border-zinc-200 bg-zinc-50"
                   }`}
@@ -3905,7 +4073,47 @@ function HomeScreen({
                     >
                       Tested
                     </button>
+                    <label className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 shadow-sm cursor-pointer">
+                      Take Photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={(event) => onServicePhotoSelected("gasChecks", room.id, event)}
+                      />
+                    </label>
+                    <label className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 shadow-sm cursor-pointer">
+                      Upload Image
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(event) => onServicePhotoSelected("gasChecks", room.id, event)}
+                      />
+                    </label>
                   </div>
+                  {gasCheck.photos.length ? (
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {gasCheck.photos.map((photo) => (
+                        <div key={photo.id} className="rounded-lg border border-zinc-200 bg-white p-1">
+                          <img
+                            src={photo.url}
+                            alt={photo.fileName || `${room.name} gas attachment`}
+                            className="h-20 w-full rounded-md object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeServicePhoto("gasChecks", room.id, photo.id)}
+                            className="mt-1 h-7 w-full rounded-md bg-red-50 text-[10px] font-semibold text-red-700"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <p className="mt-2 text-xs text-zinc-500">
                     Works: {formatRecordedTimestamp(gasCheck.worksAt)}
                   </p>
@@ -3936,7 +4144,11 @@ function HomeScreen({
                 <div
                   key={`fire-${room.id}`}
                   className={`w-full rounded-lg border px-3 py-2 text-left ${
-                    fireCheck.worksAt || fireCheck.testedAt || fireCheck.pointLocation || fireCheck.notes
+                    fireCheck.worksAt ||
+                    fireCheck.testedAt ||
+                    fireCheck.pointLocation ||
+                    fireCheck.notes ||
+                    fireCheck.photos.length
                       ? "border-emerald-300 bg-emerald-50"
                       : "border-zinc-200 bg-zinc-50"
                   }`}
@@ -3991,7 +4203,47 @@ function HomeScreen({
                     >
                       Tested
                     </button>
+                    <label className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 shadow-sm cursor-pointer">
+                      Take Photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={(event) => onServicePhotoSelected("fireAlarmChecks", room.id, event)}
+                      />
+                    </label>
+                    <label className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 shadow-sm cursor-pointer">
+                      Upload Image
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(event) => onServicePhotoSelected("fireAlarmChecks", room.id, event)}
+                      />
+                    </label>
                   </div>
+                  {fireCheck.photos.length ? (
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {fireCheck.photos.map((photo) => (
+                        <div key={photo.id} className="rounded-lg border border-zinc-200 bg-white p-1">
+                          <img
+                            src={photo.url}
+                            alt={photo.fileName || `${room.name} fire alarm attachment`}
+                            className="h-20 w-full rounded-md object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeServicePhoto("fireAlarmChecks", room.id, photo.id)}
+                            className="mt-1 h-7 w-full rounded-md bg-red-50 text-[10px] font-semibold text-red-700"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <p className="mt-2 text-xs text-zinc-500">
                     Works: {formatRecordedTimestamp(fireCheck.worksAt)}
                   </p>
@@ -4324,6 +4576,7 @@ function HomesIndex({
     onCreateHome(cleanName, presetKey);
     setNewHomeName("");
   };
+  const subscriptionEndLabel = getSubscriptionEndLabel(subscription);
 
   return (
     <div className="min-h-screen bg-neutral-100 p-4">
@@ -4346,6 +4599,11 @@ function HomesIndex({
                 Plan: <span className="font-medium text-zinc-700">{subscription?.planName || "Free"}</span>
                 {subscription?.billingInterval ? ` · ${subscription.billingInterval}` : ""}
               </p>
+              {subscriptionEndLabel ? (
+                <p className="mt-0.5 text-[11px] font-medium text-amber-700">
+                  Cancelled. Access ends on {subscriptionEndLabel}.
+                </p>
+              ) : null}
             </div>
             <button
               type="button"
@@ -4381,7 +4639,9 @@ function HomesIndex({
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-800">PDF Exports Enabled</p>
                 <p className="mt-1 text-xs text-emerald-700">
-                  {subscription?.planName || "Paid"} plan active. Client-ready PDF exports are available on this account.
+                  {subscription?.cancelAtPeriodEnd
+                    ? `${subscription?.planName || "Paid"} plan cancelled. Client-ready PDF exports stay available until ${subscriptionEndLabel || "the current period ends"}.`
+                    : `${subscription?.planName || "Paid"} plan active. Client-ready PDF exports are available on this account.`}
                 </p>
               </div>
               <button

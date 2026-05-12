@@ -91,7 +91,7 @@ Deno.serve(async (request) => {
     });
   }
 
-  if (subscriptionRecord.cancel_at_period_end) {
+  if (subscriptionRecord.cancel_at_period_end && subscriptionRecord.current_period_end) {
     return new Response(JSON.stringify({
       message: "Subscription is already scheduled to cancel at period end.",
       current_period_end: subscriptionRecord.current_period_end,
@@ -101,17 +101,38 @@ Deno.serve(async (request) => {
     });
   }
 
-  const updatedSubscription = await stripe.subscriptions.update(
-    subscriptionRecord.stripe_subscription_id,
-    {
-      cancel_at_period_end: true,
-    }
-  );
+  const updatedSubscription = subscriptionRecord.cancel_at_period_end
+    ? await stripe.subscriptions.retrieve(subscriptionRecord.stripe_subscription_id)
+    : await stripe.subscriptions.update(
+        subscriptionRecord.stripe_subscription_id,
+        {
+          cancel_at_period_end: true,
+        }
+      );
+  const currentPeriodEnd = updatedSubscription.current_period_end
+    ? new Date(updatedSubscription.current_period_end * 1000).toISOString()
+    : subscriptionRecord.current_period_end || null;
+  const { error: updateError } = await adminSupabase
+    .from("user_subscriptions")
+    .update({
+      cancel_at_period_end: Boolean(updatedSubscription.cancel_at_period_end),
+      current_period_end: currentPeriodEnd,
+      status: String(updatedSubscription.status || subscriptionRecord.status || "inactive").toLowerCase(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id);
+
+  if (updateError) {
+    return new Response(JSON.stringify({ error: updateError.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   return new Response(JSON.stringify({
     message: "Subscription will cancel at the end of the current billing period.",
     cancel_at_period_end: updatedSubscription.cancel_at_period_end,
-    current_period_end: updatedSubscription.current_period_end,
+    current_period_end: currentPeriodEnd,
   }), {
     status: 200,
     headers: { ...corsHeaders, "Content-Type": "application/json" },

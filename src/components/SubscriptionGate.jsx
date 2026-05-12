@@ -1,16 +1,5 @@
 import { useEffect, useState } from "react";
-import { hasActiveSubscription } from "../services/subscriptionAccess";
-
-function formatDate(value) {
-  if (!value) return null;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
+import { formatSubscriptionDate, getSubscriptionEndLabel, hasActiveSubscription } from "../services/subscriptionAccess";
 
 function formatLabel(value) {
   if (!value) return null;
@@ -31,7 +20,8 @@ export default function SubscriptionGate({
   busyAction,
   errorMessage,
 }) {
-  const periodEndLabel = formatDate(subscription?.currentPeriodEnd);
+  const periodEndLabel = formatSubscriptionDate(subscription?.currentPeriodEnd);
+  const subscriptionEndLabel = getSubscriptionEndLabel(subscription);
   const isActive = hasActiveSubscription(subscription);
   const statusLabel = formatLabel(subscription?.status) || "Inactive";
   const planLabel = formatLabel(subscription?.planName) || "Free";
@@ -90,11 +80,13 @@ export default function SubscriptionGate({
             </div>
 
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Renewal</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                {subscription?.cancelAtPeriodEnd ? "Ends" : "Renewal"}
+              </p>
               <p className="mt-2 text-lg font-semibold text-zinc-900">{periodEndLabel || "Not set"}</p>
               <p className="mt-1 text-xs text-zinc-500">
                 {subscription?.cancelAtPeriodEnd
-                  ? `Cancellation scheduled. Access stays active until ${periodEndLabel || "the current period ends"}.`
+                  ? `Cancellation scheduled. Access stays active until ${subscriptionEndLabel || "the current period ends"}.`
                   : "Current access period information."}
               </p>
             </div>
@@ -137,11 +129,13 @@ export default function SubscriptionGate({
               <button
                 type="button"
                 onClick={() => setCancelConfirmOpen(true)}
-                disabled={busyAction === "cancel" || subscription?.cancelAtPeriodEnd}
+                disabled={busyAction === "cancel" || (subscription?.cancelAtPeriodEnd && subscriptionEndLabel)}
                 className="inline-flex h-11 items-center justify-center rounded-xl border border-red-200 px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {subscription?.cancelAtPeriodEnd
-                  ? `Cancels On ${periodEndLabel || "Period End"}`
+                  ? subscriptionEndLabel
+                    ? `Ends On ${subscriptionEndLabel}`
+                    : "Sync End Date"
                   : busyAction === "cancel"
                     ? "Scheduling cancellation..."
                     : "Cancel subscription"}
@@ -184,10 +178,18 @@ export default function SubscriptionGate({
         </div>
         {cancelConfirmOpen ? (
           <div className="border-t border-zinc-200 bg-zinc-50 p-6">
-            <p className="text-sm font-semibold text-zinc-900">Cancel at period end?</p>
+            <p className="text-sm font-semibold text-zinc-900">
+              {subscription?.cancelAtPeriodEnd ? "Sync subscription end date?" : "Cancel at period end?"}
+            </p>
             <p className="mt-2 text-sm leading-6 text-zinc-600">
-              Your subscription will stay active until <span className="font-medium text-zinc-900">{periodEndLabel || "the end of the current billing period"}</span>.
-              You will not be billed again after that unless you subscribe again.
+              {subscription?.cancelAtPeriodEnd
+                ? "The app will check Stripe again and save the current period end date for this subscription."
+                : (
+                  <>
+                    Your subscription will stay active until <span className="font-medium text-zinc-900">{periodEndLabel || "the end of the current billing period"}</span>.
+                    You will not be billed again after that unless you subscribe again.
+                  </>
+                )}
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <button
@@ -206,7 +208,9 @@ export default function SubscriptionGate({
                 disabled={busyAction === "cancel"}
                 className="inline-flex h-11 items-center justify-center rounded-xl bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {busyAction === "cancel" ? "Scheduling..." : "Yes, cancel at period end"}
+                {busyAction === "cancel"
+                  ? subscription?.cancelAtPeriodEnd ? "Syncing..." : "Scheduling..."
+                  : subscription?.cancelAtPeriodEnd ? "Sync end date" : "Yes, cancel at period end"}
               </button>
             </div>
           </div>
