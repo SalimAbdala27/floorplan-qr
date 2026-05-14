@@ -842,6 +842,22 @@ function getBrochureHeroImage(home) {
   return firstPhoto?.preview || firstPhoto?.url || "";
 }
 
+function ContactFooter() {
+  return (
+    <footer className="px-4 py-4">
+      <div className="mx-auto w-full max-w-[23rem] text-center text-[11px] text-zinc-500 md:max-w-4xl lg:max-w-5xl">
+        Contact us:{" "}
+        <a
+          href="mailto:sales@inventorypro.uk"
+          className="font-semibold text-zinc-700 underline-offset-2 transition hover:text-zinc-900 hover:underline"
+        >
+          sales@inventorypro.uk
+        </a>
+      </div>
+    </footer>
+  );
+}
+
 function getInventoryBrochureMedia(home) {
   const inventoryRooms = home?.inventoryReport?.rooms || [];
   return inventoryRooms.flatMap((roomInventory) => {
@@ -4315,6 +4331,8 @@ function HomeScreen({
         />
       ) : null}
 
+      <ContactFooter />
+
       {exportModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end overflow-y-auto overscroll-contain bg-black/35 p-3">
           <div className="mx-auto max-h-[calc(100vh-1.5rem)] w-full max-w-[23rem] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl md:max-w-4xl lg:max-w-5xl">
@@ -4860,6 +4878,7 @@ function HomesIndex({
           ))}
         </div>
       </div>
+      <ContactFooter />
     </div>
   );
 }
