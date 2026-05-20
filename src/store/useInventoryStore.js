@@ -105,8 +105,50 @@ function mergeRoomInventory(defaultRoom, existingRoom) {
         : "na",
   }));
 
-  const mergedMedia = Array.isArray(existingRoom.media) ? existingRoom.media : [];
+  const legacyPanoramaImage =
+    typeof existingRoom.panoramaImage === "string" && existingRoom.panoramaImage
+      ? existingRoom.panoramaImage
+      : "";
+  const sourceMedia =
+    Array.isArray(existingRoom.media) && existingRoom.media.length
+      ? existingRoom.media
+      : legacyPanoramaImage
+        ? [
+            {
+              id: `legacy_pano_${existingRoom.roomId || defaultRoom.roomId}`,
+              type: "pano",
+              url: legacyPanoramaImage,
+              preview: legacyPanoramaImage,
+              fileName: "Recovered panorama.jpg",
+              assignment: "",
+              capturedAt: "",
+              uploadedAt: "",
+            },
+          ]
+        : [];
+  const mergedMedia = sourceMedia.length
+    ? sourceMedia.map((media) => {
+        const url = media?.url || media?.preview || media?.originalUrl || "";
+        return {
+          ...media,
+          url,
+          preview: media?.preview || url,
+        };
+      })
+    : [];
   const mergedVisuallyDocumented = Boolean(existingRoom.visuallyDocumented);
+  const selectedPano =
+    (existingRoom.panoramaMediaId &&
+      mergedMedia.find((media) => media.id === existingRoom.panoramaMediaId && media.type === "pano")) ||
+    null;
+  const fallbackPano = mergedMedia.find((media) => media.type === "pano") || null;
+  const mergedPanoramaImage =
+    legacyPanoramaImage ||
+    selectedPano?.preview ||
+    selectedPano?.url ||
+    fallbackPano?.preview ||
+    fallbackPano?.url ||
+    "";
   const allNotesEmpty = mergedItems.every((item) => !String(item.notes || "").trim());
   const allLegacyFairOrEmpty = mergedItems.every(
     (item) => !item.condition || item.condition === "fair" || item.condition === "na"
@@ -132,8 +174,9 @@ function mergeRoomInventory(defaultRoom, existingRoom) {
         }))
       : mergedItems,
     media: mergedMedia,
-    panoramaImage:
-      typeof existingRoom.panoramaImage === "string" ? existingRoom.panoramaImage : "",
+    panoramaImage: mergedPanoramaImage,
+    panoramaMediaId:
+      typeof existingRoom.panoramaMediaId === "string" ? existingRoom.panoramaMediaId : selectedPano?.id || "",
     visuallyDocumented: mergedVisuallyDocumented,
     overallCondition: shouldMigrateLegacyFairToNa
       ? "na"
@@ -275,6 +318,7 @@ export function addRoomMedia(roomId, media) {
             media: [...room.media, media],
             panoramaImage:
               media.type === "pano" ? media.preview || media.url || room.panoramaImage : room.panoramaImage,
+            panoramaMediaId: media.type === "pano" ? media.id : room.panoramaMediaId || "",
             visuallyDocumented:
               media.type === "pano" ? true : room.visuallyDocumented,
           }
@@ -300,6 +344,7 @@ export function removeRoomMedia(roomId, mediaId) {
               ...room,
               media: filtered,
               panoramaImage: latestPano,
+              panoramaMediaId: filtered.find((m) => m.type === "pano")?.id || "",
               visuallyDocumented: Boolean(latestPano),
             };
           })()
@@ -342,6 +387,7 @@ export function capturePanoramaForRoom(roomId, media) {
           ...room,
             media: [...room.media, media],
             panoramaImage: media.preview || media.url || room.panoramaImage,
+            panoramaMediaId: media.id,
             visuallyDocumented: true,
           }
         : room
@@ -359,6 +405,10 @@ export function setRoomPanoramaImage(roomId, panoramaImage) {
         ? {
             ...room,
             panoramaImage: panoramaImage || "",
+            panoramaMediaId:
+              room.media.find((media) => media.type === "pano" && (media.preview || media.url || "") === panoramaImage)?.id ||
+              room.panoramaMediaId ||
+              "",
             visuallyDocumented: Boolean(panoramaImage) || room.visuallyDocumented,
           }
         : room

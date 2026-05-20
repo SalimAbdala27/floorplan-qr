@@ -126,7 +126,6 @@ export default function MediaUploader({
           type: mode === "pano" ? "pano" : "photo",
           url: compressedDataUrl,
           preview: compressedDataUrl,
-          originalUrl: sourceDataUrl,
           fileName: file.name || `${mode === "pano" ? "panorama" : "photo"}_${Date.now()}.jpg`,
           mimeType: file.type || "image/jpeg",
           assignment: assignment || "",

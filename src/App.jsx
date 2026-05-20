@@ -984,6 +984,57 @@ function loadSavedState(userId) {
   }
 }
 
+function compactInventoryMediaForStorage(media) {
+  const imageUrl = media?.url || media?.preview || media?.originalUrl || "";
+  const compact = {
+    ...(media || {}),
+    url: imageUrl,
+  };
+
+  delete compact.originalUrl;
+
+  if (!compact.preview || compact.preview === imageUrl) {
+    delete compact.preview;
+  }
+
+  return compact;
+}
+
+function compactInventoryRoomForStorage(roomInventory) {
+  const media = (roomInventory.media || []).map(compactInventoryMediaForStorage);
+  const selectedPano =
+    media.find((item) => item.type === "pano" && item.id && (item.url === roomInventory.panoramaImage || item.preview === roomInventory.panoramaImage)) ||
+    media.find((item) => item.type === "pano" && item.id === roomInventory.panoramaMediaId) ||
+    null;
+
+  return {
+    ...roomInventory,
+    media,
+    panoramaMediaId: selectedPano?.id || roomInventory.panoramaMediaId || "",
+    panoramaImage: selectedPano ? "" : roomInventory.panoramaImage || "",
+  };
+}
+
+function compactHomeForStorage(home) {
+  if (!home.inventoryReport) return home;
+
+  return {
+    ...home,
+    inventoryReport: {
+      ...home.inventoryReport,
+      rooms: (home.inventoryReport.rooms || []).map(compactInventoryRoomForStorage),
+    },
+  };
+}
+
+function compactAppStateForStorage(homes, activeHomeId, pdfBranding) {
+  return {
+    homes: homes.map(compactHomeForStorage),
+    activeHomeId,
+    pdfBranding: normalizePdfBranding(pdfBranding),
+  };
+}
+
 function HomeScreen({
   home,
   onBack,
@@ -4971,41 +5022,12 @@ export default function App() {
     if (!userId) return;
 
     const storageKey = getStorageKey(userId);
-    const statePayload = {
-      homes,
-      activeHomeId,
-      pdfBranding: normalizePdfBranding(pdfBranding),
-    };
+    const statePayload = compactAppStateForStorage(homes, activeHomeId, pdfBranding);
 
     try {
       localStorage.setItem(storageKey, JSON.stringify(statePayload));
     } catch {
-      // If media payloads are too large for localStorage, keep structure and text data.
-      const compactHomes = homes.map((home) => ({
-        ...home,
-        inventoryReport: home.inventoryReport
-          ? {
-              ...home.inventoryReport,
-              rooms: (home.inventoryReport.rooms || []).map((room) => ({
-                ...room,
-                media: [],
-              })),
-            }
-          : null,
-      }));
-
-      try {
-        localStorage.setItem(
-          storageKey,
-          JSON.stringify({
-            homes: compactHomes,
-            activeHomeId,
-            pdfBranding: normalizePdfBranding(pdfBranding),
-          })
-        );
-      } catch {
-        // no-op
-      }
+      // Keep the last good save rather than overwriting it with a report that has lost its media.
     }
   }, [userId, homes, activeHomeId, pdfBranding]);
 
