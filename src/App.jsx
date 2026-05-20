@@ -1035,6 +1035,19 @@ function compactAppStateForStorage(homes, activeHomeId, pdfBranding) {
   };
 }
 
+function persistAppState(userId, homes, activeHomeId, pdfBranding) {
+  if (!userId) return;
+
+  try {
+    localStorage.setItem(
+      getStorageKey(userId),
+      JSON.stringify(compactAppStateForStorage(homes, activeHomeId, pdfBranding))
+    );
+  } catch {
+    // Keep the last good save rather than overwriting it with partial or media-stripped data.
+  }
+}
+
 function HomeScreen({
   home,
   onBack,
@@ -1925,7 +1938,7 @@ function HomeScreen({
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      const heroImage = await compressImageFileToDataUrl(file, 1800, 0.8);
+      const heroImage = await compressImageFileToDataUrl(file, 1400, 0.74);
       updateMarketingBrochure({ heroImage });
     } catch {
       // no-op
@@ -1941,7 +1954,7 @@ function HomeScreen({
       const nextImages = await Promise.all(
         files.map(async (file, index) => ({
           id: `brochure_upload_${Date.now()}_${index}`,
-          url: await compressImageFileToDataUrl(file, 1800, 0.8),
+          url: await compressImageFileToDataUrl(file, 1400, 0.74),
           caption: file.name || "Uploaded image",
         }))
       );
@@ -1981,7 +1994,7 @@ function HomeScreen({
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      const floorplanImage = await compressImageFileToDataUrl(file, 1800, 0.84);
+      const floorplanImage = await compressImageFileToDataUrl(file, 1600, 0.8);
       updateMarketingBrochure({
         floorplanSource: "uploaded",
         floorplanImage,
@@ -5021,14 +5034,7 @@ export default function App() {
   useEffect(() => {
     if (!userId) return;
 
-    const storageKey = getStorageKey(userId);
-    const statePayload = compactAppStateForStorage(homes, activeHomeId, pdfBranding);
-
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(statePayload));
-    } catch {
-      // Keep the last good save rather than overwriting it with a report that has lost its media.
-    }
+    persistAppState(userId, homes, activeHomeId, pdfBranding);
   }, [userId, homes, activeHomeId, pdfBranding]);
 
   useEffect(() => {
@@ -5156,7 +5162,11 @@ export default function App() {
   };
 
   const updateHome = (homeId, mutator) => {
-    setHomes((prev) => prev.map((home) => (home.id === homeId ? mutator(home) : home)));
+    setHomes((prev) => {
+      const nextHomes = prev.map((home) => (home.id === homeId ? mutator(home) : home));
+      persistAppState(userId, nextHomes, activeHomeId, pdfBranding);
+      return nextHomes;
+    });
   };
 
   const deleteHome = (homeId) => {

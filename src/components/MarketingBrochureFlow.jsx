@@ -18,7 +18,7 @@ function deriveStats(rooms, floors) {
 }
 
 function getEditableStat(value, fallback) {
-  if (value === "" || value === null || typeof value === "undefined") return String(fallback);
+  if (value === null || typeof value === "undefined") return String(fallback);
   return String(value);
 }
 
@@ -173,52 +173,48 @@ export default function MarketingBrochureFlow({
               <label className="text-[11px] font-medium text-zinc-600">
                 Bedrooms
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
                   enterKeyHint="done"
-                  step="0.5"
-                  min="0"
                   value={stats.bedrooms}
                   onChange={(event) => onBrochureChange({ bedrooms: event.target.value })}
+                  placeholder={String(derivedStats.bedrooms)}
                   className="mt-1 h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm"
                 />
               </label>
               <label className="text-[11px] font-medium text-zinc-600">
                 Bathrooms
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
                   enterKeyHint="done"
-                  step="0.5"
-                  min="0"
                   value={stats.bathrooms}
                   onChange={(event) => onBrochureChange({ bathrooms: event.target.value })}
+                  placeholder={String(derivedStats.bathrooms)}
                   className="mt-1 h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm"
                 />
               </label>
               <label className="text-[11px] font-medium text-zinc-600">
                 Reception rooms
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
                   enterKeyHint="done"
-                  step="0.5"
-                  min="0"
                   value={stats.receptions}
                   onChange={(event) => onBrochureChange({ receptions: event.target.value })}
+                  placeholder={String(derivedStats.receptions)}
                   className="mt-1 h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm"
                 />
               </label>
               <label className="text-[11px] font-medium text-zinc-600">
                 Floors
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
                   enterKeyHint="done"
-                  step="0.5"
-                  min="0"
                   value={stats.floors}
                   onChange={(event) => onBrochureChange({ floors: event.target.value })}
+                  placeholder={String(derivedStats.floors)}
                   className="mt-1 h-10 w-full rounded-lg border border-zinc-300 px-3 text-sm"
                 />
               </label>

@@ -102,7 +102,7 @@ export default function InventoryFlow({
 }) {
   const currentReport = useInventoryStore((s) => s.currentReport);
   const activeRoomId = useInventoryStore((s) => s.activeRoomId);
-  const autosaveTimer = useRef(null);
+  const lastSyncedReportRef = useRef("");
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomFloorId, setNewRoomFloorId] = useState("floor_1");
   const [downloadZipBusy, setDownloadZipBusy] = useState(false);
@@ -124,14 +124,10 @@ export default function InventoryFlow({
 
   useEffect(() => {
     if (!currentReport || !onReportChange) return;
-    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = setTimeout(() => {
-      onReportChange(currentReport);
-    }, 400);
-
-    return () => {
-      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    };
+    const reportSignature = JSON.stringify(currentReport);
+    if (lastSyncedReportRef.current === reportSignature) return;
+    lastSyncedReportRef.current = reportSignature;
+    onReportChange(currentReport);
   }, [currentReport, onReportChange]);
 
   const roomsById = useMemo(
