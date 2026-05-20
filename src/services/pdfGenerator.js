@@ -70,6 +70,11 @@ function mixRgb(baseRgb, targetRgb, ratio = 0.5) {
   return baseRgb.map((value, index) => Math.round(value + ((targetRgb[index] - value) * ratio)));
 }
 
+function getReadableTextRgb(backgroundRgb, darkRgb = [31, 41, 55], lightRgb = [255, 255, 255]) {
+  const luminance = (0.2126 * backgroundRgb[0]) + (0.7152 * backgroundRgb[1]) + (0.0722 * backgroundRgb[2]);
+  return luminance > 150 ? darkRgb : lightRgb;
+}
+
 function createPdfThemeTokens(primaryRgb, accentRgb, preset = "light") {
   const accentDarkRgb = mixRgb(accentRgb, [0, 0, 0], 0.28);
   const accentSoftRgb = withAlpha(accentRgb, preset === "dark" ? 0.22 : 0.18);
@@ -447,6 +452,7 @@ export function appendInventoryPdf(doc, report, roomsById, propertyName = "Prope
   const primaryRgb = hexToRgb(branding.primaryColor, [31, 41, 55]);
   const accentRgb = hexToRgb(ensureReadableAccentHex(branding.accentColor, "#15803d"), [21, 128, 61]);
   const theme = createPdfThemeTokens(primaryRgb, accentRgb, branding.themePreset === "dark" ? "dark" : "light");
+  const coverTextRgb = getReadableTextRgb(theme.coverRgb, [31, 41, 55], theme.inverseTextRgb);
   const accentSoft = theme.cardMutedRgb;
   const companyName = safeText(branding.companyName, "Inventory Team");
   const propertyAddress = safeText(report?.propertyAddress, propertyName);
@@ -522,11 +528,11 @@ export function appendInventoryPdf(doc, report, roomsById, propertyName = "Prope
   doc.roundedRect(14, 138, 182, 34, 10, 10, "F");
   doc.setGState(new doc.GState({ opacity: 1 }));
   doc.setFontSize(10);
-  doc.setTextColor(theme.inverseTextRgb[0], theme.inverseTextRgb[1], theme.inverseTextRgb[2]);
+  doc.setTextColor(coverTextRgb[0], coverTextRgb[1], coverTextRgb[2]);
   doc.text("A visual record of room condition, grouped by area for quick review.", 20, 151);
   drawDivider(doc, 156, accentRgb);
   doc.setFontSize(9);
-  doc.setTextColor(theme.bodyTextRgb[0], theme.bodyTextRgb[1], theme.bodyTextRgb[2]);
+  doc.setTextColor(coverTextRgb[0], coverTextRgb[1], coverTextRgb[2]);
   doc.text("Clean image cards, assignment-based subsections, traffic-light condition markers, and a final summary.", 20, 165);
 
   rooms.forEach((roomInventory) => {

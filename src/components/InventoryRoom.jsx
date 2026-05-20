@@ -50,6 +50,10 @@ export default function InventoryRoom({
     () => (roomInventory.media || []).filter((media) => media.type === "pano"),
     [roomInventory.media]
   );
+  const recordedConditionCount = useMemo(
+    () => (roomInventory.items || []).filter((item) => item.condition && item.condition !== "na").length,
+    [roomInventory.items]
+  );
   const selectedCount = selectedMediaIds.length;
 
   useEffect(() => {
@@ -159,7 +163,10 @@ export default function InventoryRoom({
           onClick={() => setAdvancedOpen((prev) => !prev)}
           className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-left text-xs font-semibold text-zinc-700"
         >
-          Advanced Details (Optional) {advancedOpen ? "▲" : "▼"}
+          Advanced Details (Optional)
+          {recordedConditionCount ? ` · ${recordedConditionCount} condition${recordedConditionCount === 1 ? "" : "s"} recorded` : ""}
+          {" "}
+          {advancedOpen ? "▲" : "▼"}
         </button>
       </div>
 
